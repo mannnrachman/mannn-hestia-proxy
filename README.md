@@ -324,6 +324,7 @@ All permissions match HestiaCP standard:
 mannn-hestia-proxy/
 ├── install.sh              ← install templates to HestiaCP
 ├── uninstall.sh            ← remove templates from HestiaCP
+├── setup-backup-exclusions.sh ← exclude heavy dirs from backups
 ├── README.md
 ├── docs/
 │   ├── prerequisites.md    ← server setup, all runtime installations
@@ -364,6 +365,66 @@ mannn-hestia-proxy/
 | App directory | `private/{runtime}/` | `private/nodejs/` |
 
 To use a different prefix, find-and-replace `mannn` across all files before running `install.sh`.
+
+## Backup & Restore
+
+### Setup Backup Exclusions
+
+By default, HestiaCP backs up the entire domain directory — including `node_modules/`, `venv/`, `vendor/`, and compiled binaries. These can bloat backups to hundreds of MB.
+
+Run after installing templates:
+
+```bash
+# Single user
+sudo ./setup-backup-exclusions.sh myuser
+
+# All users
+for u in $(v-list-users plain | cut -f1); do sudo ./setup-backup-exclusions.sh $u; done
+```
+
+What gets excluded (rebuilt on restore):
+
+| Path | Why | Restore command |
+|------|-----|-----------------|
+| `private/nodejs/node_modules` | Large, reinstallable | `npm install` |
+| `private/go/server` | Binary, recompilable | `go build -o server .` |
+| `private/python/venv` | Large, recreatable | `python3 -m venv venv && pip install -r requirements.txt` |
+| `private/php/vendor` | Large, reinstallable | `composer install` |
+| `private/php/node_modules` | Large, reinstallable | `npm install` |
+
+What stays in backup: source code, `.env`, `package.json`, `requirements.txt`, `go.mod`, `Dockerfile`, `docker-compose.yml`.
+
+Uses HestiaCP's native `v-update-user-backup-exclusions` with `*` wildcard — safe because non-proxy domains don't have these paths.
+
+### Restore Flow
+
+```bash
+# 1. Restore backup (HestiaCP panel or CLI)
+v-restore-user myuser /backup/myuser.2026-01-15.tar
+
+# 2. Re-apply template (auto-rebuilds everything)
+v-change-web-domain-tpl myuser myapp.example.com mannn-nodejs-proxy
+
+# 3. For Node.js — reinstall dependencies
+cd /home/myuser/web/myapp.example.com/private/nodejs/
+npm install
+
+# For Python — recreate venv
+cd /home/myuser/web/myapp.example.com/private/python/
+python3 -m venv venv
+source venv/bin/activate && pip install -r requirements.txt && deactivate
+
+# For Go — recompile
+cd /home/myuser/web/myapp.example.com/private/go/
+go build -o server .
+
+# For PHP/Laravel — reinstall dependencies
+cd /home/myuser/web/myapp.example.com/private/php/
+composer install
+
+# 4. Re-apply template again to restart service with rebuilt deps
+v-change-web-domain-tpl myuser myapp.example.com mannn-nodejs-proxy
+```
 
 ## License
 
