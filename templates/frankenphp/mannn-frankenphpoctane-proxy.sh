@@ -16,9 +16,9 @@ ENV_FILE="$APP_DIR/.env"
 CONF_DIR="$home/$user/conf/web/$domain"
 PROXY_CONF="$CONF_DIR/nginx.proxy.conf"
 PROXY_SSL_CONF="$CONF_DIR/nginx.proxy.ssl.conf"
-DEFAULT_PORT=8180
-PORT_MIN=8180
-PORT_MAX=8999
+DEFAULT_PORT=7100
+PORT_MIN=7100
+PORT_MAX=7999
 SVC_NAME="$(mannn_unit_name "$user" "$domain")"
 SVC_FILE="/etc/systemd/system/$SVC_NAME.service"
 
@@ -38,7 +38,7 @@ chmod 600 "$ENV_FILE"
 if [ ! -f "$APP_DIR/index.php" ] && [ ! -f "$APP_DIR/public/index.php" ]; then
     cat > "$APP_DIR/index.php" << 'PHPEOF'
 <?php
-$port = 8180;
+$port = 7100;
 $envFile = __DIR__ . '/.env';
 if (file_exists($envFile)) {
     $env = file_get_contents($envFile);

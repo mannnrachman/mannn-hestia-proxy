@@ -114,7 +114,7 @@ RemainAfterExit=yes
 ExecStartPre=-/usr/bin/docker stop $CONTAINER_NAME
 ExecStartPre=-/usr/bin/docker rm $CONTAINER_NAME
 ExecStartPre=/usr/bin/docker pull $IMAGE
-ExecStart=/usr/bin/docker run -d --name $CONTAINER_NAME --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 256 -p 127.0.0.1:$PORT:$CONTAINER_PORT --restart unless-stopped $IMAGE
+ExecStart=/usr/bin/docker run -d --name $CONTAINER_NAME --user 65534:65534 --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 256 -p 127.0.0.1:$PORT:$CONTAINER_PORT --restart unless-stopped $IMAGE
 ExecStop=/usr/bin/docker stop $CONTAINER_NAME
 
 [Install]
@@ -124,7 +124,7 @@ SVCEOF
 /usr/bin/docker stop "$CONTAINER_NAME" >/dev/null 2>&1
 /usr/bin/docker rm "$CONTAINER_NAME" >/dev/null 2>&1
 /usr/bin/docker pull "$IMAGE" >/dev/null 2>&1
-/usr/bin/docker run -d     --name "$CONTAINER_NAME"     --read-only     --tmpfs /tmp:rw,noexec,nosuid,size=64m     --security-opt no-new-privileges:true     --cap-drop ALL     --pids-limit 256     -p "127.0.0.1:$PORT:$CONTAINER_PORT"     --restart unless-stopped     "$IMAGE" >/dev/null 2>&1
+/usr/bin/docker run -d     --name "$CONTAINER_NAME"     --user 65534:65534     --read-only     --tmpfs /tmp:rw,noexec,nosuid,size=64m     --security-opt no-new-privileges:true     --cap-drop ALL     --pids-limit 256     -p "127.0.0.1:$PORT:$CONTAINER_PORT"     --restart unless-stopped     "$IMAGE" >/dev/null 2>&1
 
 systemctl daemon-reload >/dev/null 2>&1
 if systemctl is-enabled --quiet "$SVC_NAME" 2>/dev/null; then
