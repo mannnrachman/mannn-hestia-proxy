@@ -9,36 +9,39 @@ ip="$3"
 home="$4"
 docroot="$5"
 
+. "/usr/local/hestia/data/templates/web/nginx/php-fpm/mannn-security.sh"
+
 APP_DIR="$home/$user/web/$domain/private/python"
 ENV_FILE="$APP_DIR/.env"
 CONF_DIR="$home/$user/conf/web/$domain"
 PROXY_CONF="$CONF_DIR/nginx.proxy.conf"
 PROXY_SSL_CONF="$CONF_DIR/nginx.proxy.ssl.conf"
-DEFAULT_PORT=8000
-SVC_NAME="mannn-$(echo "$domain" | tr '.' '-')"
+DEFAULT_PORT=8100
+PORT_MIN=8100
+PORT_MAX=8999
+SVC_NAME="$(mannn_unit_name "$user" "$domain")"
 SVC_FILE="/etc/systemd/system/$SVC_NAME.service"
 
-# --- App directory ---
-mkdir -p "$APP_DIR"
-chown "$user:$user" "$APP_DIR"
-chmod 755 "$APP_DIR"
+mannn_prepare_dir "$APP_DIR" "$user:$user" 755
+mannn_prepare_dir "$CONF_DIR" "$user:$user" 750
+mannn_abort_if_symlink "$ENV_FILE"
+mannn_abort_if_symlink "$PROXY_CONF"
+mannn_abort_if_symlink "$PROXY_SSL_CONF"
+mannn_abort_if_symlink "$SVC_FILE"
 
-# --- Default .env ---
 if [ ! -f "$ENV_FILE" ]; then
     echo "PORT=$DEFAULT_PORT" > "$ENV_FILE"
 fi
 chown "$user:$user" "$ENV_FILE" 2>/dev/null
 chmod 600 "$ENV_FILE"
 
-# --- Placeholder app.py ---
 if [ ! -f "$APP_DIR/app.py" ] && [ ! -f "$APP_DIR/main.py" ] && [ ! -f "$APP_DIR/wsgi.py" ] && [ ! -f "$APP_DIR/server.py" ]; then
     cat > "$APP_DIR/app.py" << 'PYEOF'
 import json
-import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
-def load_port(default=8000):
+def load_port(default=8100):
     try:
         with open('.env') as f:
             for line in f:
@@ -73,7 +76,6 @@ PYEOF
     chmod 644 "$APP_DIR/app.py"
 fi
 
-# --- Detect entry point and python binary ---
 ENTRY="app.py"
 if [ ! -f "$APP_DIR/app.py" ]; then
     if [ -f "$APP_DIR/server.py" ]; then
@@ -85,24 +87,16 @@ if [ ! -f "$APP_DIR/app.py" ]; then
     fi
 fi
 
-# Prefer venv python if available
 if [ -f "$APP_DIR/venv/bin/python3" ]; then
     PYTHON_BIN="$APP_DIR/venv/bin/python3"
 else
     PYTHON_BIN=$(command -v python3 2>/dev/null || echo "/usr/local/bin/python3")
 fi
 
-# --- Read PORT from .env ---
-PORT=$(grep -oP '^PORT=\K.*' "$ENV_FILE" 2>/dev/null | tr -d '"' | tr -d "'")
-if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
-    PORT=$DEFAULT_PORT
-fi
+REQUESTED_PORT=$(mannn_read_env_value PORT "$ENV_FILE")
+PORT=$(mannn_resolve_port "$REQUESTED_PORT" "$DEFAULT_PORT" "$PORT_MIN" "$PORT_MAX")
 
-# --- Clean old proxy configs ---
 rm -f "$PROXY_CONF" "$PROXY_SSL_CONF"
-
-# --- Generate nginx proxy configs ---
-mkdir -p "$CONF_DIR"
 
 cat > "$PROXY_CONF" << PROXYEOF
 location / {
@@ -139,7 +133,6 @@ PROXYEOF
 chown "root:$user" "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null
 chmod 640 "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null
 
-# --- Systemd service ---
 cat > "$SVC_FILE" << SVCEOF
 [Unit]
 Description=Python app for $domain

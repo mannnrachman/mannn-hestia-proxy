@@ -1,19 +1,17 @@
 #!/bin/bash
 # mannn-hestia-proxy — Install dynamic proxy templates for HestiaCP
-# Supports: Node.js, Go, Python, FrankenPHP/Laravel Octane, Docker
+# Supports: Node.js, Go, Python, FrankenPHP/Laravel Octane, Docker (prebuilt image only)
 #
 # Usage: sudo ./install.sh
 # To rebrand: find-and-replace "mannn" across all files before installing
 
 set -e
 
-# Check root
 if [ "$EUID" -ne 0 ]; then
     echo "Run as root or with sudo."
     exit 1
 fi
 
-# Check HestiaCP
 if [ ! -d /usr/local/hestia ]; then
     echo "HestiaCP not found at /usr/local/hestia"
     exit 1
@@ -24,7 +22,10 @@ TPL_DIR="/usr/local/hestia/data/templates/web/nginx/php-fpm"
 
 echo "Installing mannn-hestia-proxy templates..."
 
-# Install each template
+cp "$SCRIPT_DIR/templates/common/mannn-security.sh" "$TPL_DIR/mannn-security.sh"
+chmod 644 "$TPL_DIR/mannn-security.sh"
+echo "  mannn-security.sh ✓"
+
 for runtime in nodejs goproxy pypyroxy frankenphp docker; do
     SRC_DIR="$SCRIPT_DIR/templates/$runtime"
 
@@ -53,5 +54,10 @@ echo "  Web → Edit Domain → Web Template → mannn-go-proxy"
 echo "  Web → Edit Domain → Web Template → mannn-python-proxy"
 echo "  Web → Edit Domain → Web Template → mannn-frankenphpoctane-proxy"
 echo "  Web → Edit Domain → Web Template → mannn-docker-proxy"
+echo ""
+echo "Security hardening enabled:"
+echo "  - localhost proxy ports restricted per runtime"
+echo "  - service/container names are collision-safe"
+echo "  - Docker template only supports prebuilt images via IMAGE=..."
 echo ""
 echo "See README.md for usage instructions."

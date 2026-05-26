@@ -1,6 +1,6 @@
 # mannn-hestia-proxy
 
-Dynamic Nginx reverse proxy templates for **HestiaCP** — run Node.js, Go, Python, FrankenPHP, or Docker apps behind Nginx with per-domain port configuration.
+Dynamic Nginx reverse proxy templates for **HestiaCP** — run Node.js, Go, Python, FrankenPHP, or safer prebuilt Docker images behind Nginx with per-domain port configuration.
 
 ## Overview
 
@@ -15,16 +15,22 @@ Dynamic Nginx reverse proxy templates for **HestiaCP** — run Node.js, Go, Pyth
 
 | Template | Runtime | Directory | Default Port | What Runs |
 |----------|---------|-----------|-------------|-----------|
-| `mannn-nodejs-proxy` | Node.js | `private/nodejs/` | 3000 | systemd → `node server.js` |
-| `mannn-go-proxy` | Go | `private/go/` | 4000 | systemd → compiled `server` binary |
-| `mannn-python-proxy` | Python | `private/python/` | 8000 | systemd → `python3 app.py` |
-| `mannn-frankenphpoctane-proxy` | PHP / Laravel | `private/php/` | 8080 | systemd → `frankenphp php-server` or `php artisan octane:start` |
-| `mannn-docker-proxy` | Docker | `private/docker/` | 9000 | Docker container from `Dockerfile` or `docker-compose.yml` |
+| `mannn-nodejs-proxy` | Node.js | `private/nodejs/` | 3100 | systemd → `node server.js` |
+| `mannn-go-proxy` | Go | `private/go/` | 4100 | systemd → compiled `server` binary |
+| `mannn-python-proxy` | Python | `private/python/` | 8100 | systemd → `python3 app.py` |
+| `mannn-frankenphpoctane-proxy` | PHP / Laravel | `private/php/` | 8180 | systemd → `frankenphp php-server` or `php artisan octane:start` |
+| `mannn-docker-proxy` | Docker | `private/docker/` | 9100 | Restricted container from prebuilt `IMAGE=` only |
 
 All templates share the same pattern:
 ```
 nginx (port 80/443) → proxy_pass to 127.0.0.1:{PORT} → your app
 ```
+
+Security hardening in this version:
+- each runtime only accepts a dedicated localhost port range
+- blocked internal/control-panel ports automatically fall back to a safe default
+- service/container names use a collision-safe hash
+- Docker no longer builds or runs `docker-compose.yml` from user-writable files
 
 ## Quick Start (3 steps)
 
@@ -144,17 +150,18 @@ Auto-detect:
 #### Docker (`private/docker/`)
 ```bash
 cd /home/myuser/web/myapp.example.com/private/docker/
-rm Dockerfile                   # remove placeholder
-# upload: Dockerfile OR docker-compose.yml
+# hardened mode: do not place Dockerfile or compose files here
+# only edit .env and point IMAGE to a prebuilt image
 ```
-Auto-detect:
-- `docker-compose.yml` exists → `docker compose up -d --build`
-- `Dockerfile` exists → `docker build` + `docker run`
+Docker hardening:
+- `Dockerfile`, `docker-compose.yml`, `compose.yaml`, and `compose.yml` are refused by the hardened template
+- set a prebuilt image name in `.env` and the template will `docker pull` + run it with restricted flags
 
-`.env` has two variables for Docker:
+`.env` has three variables for Docker:
 ```
-PORT=9000            # host port (nginx proxies here)
-CONTAINER_PORT=80    # port inside the container
+PORT=9100                # host port (nginx proxies here)
+CONTAINER_PORT=8080      # port inside the container
+IMAGE=nginx:alpine       # prebuilt image only
 ```
 
 ### Step 6: Re-apply Template (restarts with your code)
@@ -174,11 +181,15 @@ curl http://myapp.example.com
 ## Change Port
 
 ```bash
-# Edit .env
-echo "PORT=3001" > /home/myuser/web/myapp.example.com/private/nodejs/.env
+# Node.js: choose a port inside the allowed Node.js range (3100-3999)
+echo "PORT=3101" > /home/myuser/web/myapp.example.com/private/nodejs/.env
 
-# For Docker, also set container port
-echo -e "PORT=9001\nCONTAINER_PORT=8080" > /home/myuser/web/myapp.example.com/private/docker/.env
+# Docker: choose a port inside the allowed Docker range (9100-9999)
+cat > /home/myuser/web/myapp.example.com/private/docker/.env <<EOF
+PORT=9101
+CONTAINER_PORT=8080
+IMAGE=nginx:alpine
+EOF
 
 # Re-apply template
 v-change-web-domain-tpl myuser myapp.example.com mannn-nodejs-proxy
@@ -186,20 +197,21 @@ v-change-web-domain-tpl myuser myapp.example.com mannn-nodejs-proxy
 
 ## Manage Service
 
-Services auto-created with name `mannn-{domain}` (dots → dashes):
+Services and containers now use a **collision-safe generated name** based on `user + hash(domain)`. Example pattern:
+
+```
+mannn-myuser-a1b2c3d4e5f6
+```
+
+To discover the exact name on a server later, list matching units or containers:
 
 ```bash
-# Systemd (Node.js, Go, Python, FrankenPHP)
-sudo systemctl status mannn-api-example-com
-sudo systemctl restart mannn-api-example-com
-sudo systemctl stop mannn-api-example-com
-journalctl -u mannn-api-example-com -f
+# Systemd (Node.js, Go, Python, FrankenPHP, Docker unit)
+systemctl list-units --type=service | grep mannn-
+ls /etc/systemd/system/mannn-*.service
 
-# Docker
-sudo docker ps                                 # list containers
-sudo docker logs mannn-api-example-com          # view logs
-sudo docker restart mannn-api-example-com       # restart
-sudo docker stop mannn-api-example-com          # stop
+# Docker containers
+docker ps -a --format '{{.Names}}' | grep '^mannn-'
 ```
 
 ## Directory Structure
@@ -220,7 +232,7 @@ sudo docker stop mannn-api-example-com          # stop
 ├── public_html/          ← not used
 ├── private/
 │   └── nodejs/           ← app code here
-│       ├── .env          ← PORT=3000
+│       ├── .env          ← PORT=3100
 │       ├── server.js     ← entry point
 │       ├── package.json
 │       └── node_modules/
@@ -234,7 +246,7 @@ sudo docker stop mannn-api-example-com          # stop
 ├── public_html/          ← not used
 ├── private/
 │   └── go/               ← app code here
-│       ├── .env          ← PORT=4000
+│       ├── .env          ← PORT=4100
 │       ├── main.go       ← source code
 │       ├── go.mod
 │       └── server        ← auto-compiled binary
@@ -248,7 +260,7 @@ sudo docker stop mannn-api-example-com          # stop
 ├── public_html/          ← not used
 ├── private/
 │   └── python/           ← app code here
-│       ├── .env          ← PORT=8000
+│       ├── .env          ← PORT=8100
 │       ├── app.py        ← entry point
 │       ├── requirements.txt
 │       └── venv/         ← optional (auto-detected)
@@ -262,7 +274,7 @@ sudo docker stop mannn-api-example-com          # stop
 ├── public_html/          ← not used
 ├── private/
 │   └── php/              ← app code here
-│       ├── .env          ← PORT=8080
+│       ├── .env          ← PORT=8180
 │       ├── index.php     ← plain PHP entry
 │       └── artisan       ← if present → Laravel Octane mode
 ├── document_errors/
@@ -275,9 +287,8 @@ sudo docker stop mannn-api-example-com          # stop
 ├── public_html/          ← not used
 ├── private/
 │   └── docker/           ← app code here
-│       ├── .env          ← PORT=9000, CONTAINER_PORT=80
-│       ├── Dockerfile    ← OR docker-compose.yml
-│       └── ...           ← any files needed by container
+│       ├── .env          ← PORT=9100, CONTAINER_PORT=8080, IMAGE=nginx:alpine
+│       └── no build files ← Dockerfile / compose files are intentionally rejected
 ├── document_errors/
 └── stats/
 ```
@@ -306,7 +317,7 @@ All permissions match HestiaCP standard:
 
 ## Troubleshooting
 
-**502 Bad Gateway**: App not running. Check service: `systemctl status mannn-{domain}` or `docker ps`
+**502 Bad Gateway**: App not running. Check the generated `mannn-*` service with `systemctl list-units --type=service | grep mannn-` or inspect containers with `docker ps -a`.
 
 **203/EXEC**: Binary not found. Ensure runtime installed system-wide.
 
@@ -316,7 +327,7 @@ All permissions match HestiaCP standard:
 
 **Permission denied**: Re-apply template to auto-fix: `v-change-web-domain-tpl user domain template`
 
-**Docker build fails**: Check Dockerfile syntax: `docker build -t test /home/user/web/domain/private/docker/`
+**Docker image fails to start**: verify `IMAGE=` and `CONTAINER_PORT=` in `.env`, then re-apply the template.
 
 ## File Reference
 
@@ -332,6 +343,8 @@ mannn-hestia-proxy/
 │   ├── deployment.md       ← full workflow per template, migration, uninstall
 │   └── troubleshooting.md  ← common issues and fixes per template
 └── templates/
+    ├── common/
+    │   └── mannn-security.sh
     ├── nodejs/
     │   ├── mannn-nodejs-proxy.tpl
     │   ├── mannn-nodejs-proxy.stpl
@@ -360,8 +373,8 @@ mannn-hestia-proxy/
 |-------|---------|---------|
 | Template files | `mannn-{runtime}-proxy.{tpl,stpl,sh}` | `mannn-nodejs-proxy.sh` |
 | Template name in HestiaCP | `mannn-{runtime}-proxy` | `mannn-go-proxy` |
-| Systemd service | `mannn-{domain}` | `mannn-api-example-com` |
-| Docker container | `mannn-{domain}` | `mannn-api-example-com` |
+| Systemd service | `mannn-{user}-{hash(domain)}` | `mannn-myuser-a1b2c3d4e5f6` |
+| Docker container | `mannn-{user}-{hash(domain)}` | `mannn-myuser-a1b2c3d4e5f6` |
 | App directory | `private/{runtime}/` | `private/nodejs/` |
 
 To use a different prefix, find-and-replace `mannn` across all files before running `install.sh`.
@@ -397,7 +410,7 @@ What gets excluded (rebuilt on restore):
 | `private/php/vendor` | Large, reinstallable | `composer install` |
 | `private/php/node_modules` | Large, reinstallable | `npm install` |
 
-What stays in backup: source code, `.env`, `package.json`, `requirements.txt`, `go.mod`, `Dockerfile`, `docker-compose.yml`.
+What stays in backup: source code, `.env`, `package.json`, `requirements.txt`, `go.mod`, and other small app configuration files. In hardened Docker mode, build/compose files are intentionally not used.
 
 Uses HestiaCP's native `v-update-user-backup-exclusions` with `*` wildcard — safe because non-proxy domains don't have these paths.
 
@@ -434,3 +447,18 @@ v-change-web-domain-tpl myuser myapp.example.com mannn-nodejs-proxy
 ## License
 
 MIT
+
+
+## Security Notes
+
+This hardened release intentionally removes the old Docker build/compose workflow because it allowed root to execute build instructions from user-writable files. The new Docker template supports **prebuilt images only** via `IMAGE=` in `.env`.
+
+Per-runtime localhost port windows:
+
+- Node.js: `3100-3999`
+- Go: `4100-4999`
+- Python: `8100-8999`
+- FrankenPHP: `8180-8999`
+- Docker: `9100-9999`
+
+If an invalid or blocked port is requested, the template falls back to its safe default port.

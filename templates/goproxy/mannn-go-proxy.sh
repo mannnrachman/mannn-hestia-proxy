@@ -9,78 +9,82 @@ ip="$3"
 home="$4"
 docroot="$5"
 
+. "/usr/local/hestia/data/templates/web/nginx/php-fpm/mannn-security.sh"
+
 APP_DIR="$home/$user/web/$domain/private/go"
 ENV_FILE="$APP_DIR/.env"
 CONF_DIR="$home/$user/conf/web/$domain"
 PROXY_CONF="$CONF_DIR/nginx.proxy.conf"
 PROXY_SSL_CONF="$CONF_DIR/nginx.proxy.ssl.conf"
-DEFAULT_PORT=4000
-SVC_NAME="mannn-$(echo "$domain" | tr '.' '-')"
+DEFAULT_PORT=4100
+PORT_MIN=4100
+PORT_MAX=4999
+SVC_NAME="$(mannn_unit_name "$user" "$domain")"
 SVC_FILE="/etc/systemd/system/$SVC_NAME.service"
 
-# --- App directory ---
-mkdir -p "$APP_DIR"
-chown "$user:$user" "$APP_DIR"
-chmod 755 "$APP_DIR"
+mannn_prepare_dir "$APP_DIR" "$user:$user" 755
+mannn_prepare_dir "$CONF_DIR" "$user:$user" 750
+mannn_abort_if_symlink "$ENV_FILE"
+mannn_abort_if_symlink "$PROXY_CONF"
+mannn_abort_if_symlink "$PROXY_SSL_CONF"
+mannn_abort_if_symlink "$SVC_FILE"
 
-# --- Default .env ---
 if [ ! -f "$ENV_FILE" ]; then
     echo "PORT=$DEFAULT_PORT" > "$ENV_FILE"
 fi
 chown "$user:$user" "$ENV_FILE" 2>/dev/null
 chmod 600 "$ENV_FILE"
 
-# --- Placeholder main.go ---
 if [ ! -f "$APP_DIR/main.go" ] && [ ! -f "$APP_DIR/server" ] && [ ! -f "$APP_DIR/app" ]; then
     cat > "$APP_DIR/main.go" << 'GOEOF'
 package main
 
 import (
-	"bufio"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"os"
-	"strings"
+    "bufio"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "os"
+    "strings"
 )
 
 func main() {
-	port := loadPort("4000")
+    port := loadPort("4100")
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "ok",
-			"message": "Go app running",
-			"domain":  r.Host,
-		})
-	})
+    http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]string{
+            "status":  "ok",
+            "message": "Go app running",
+            "domain":  r.Host,
+        })
+    })
 
-	fmt.Printf("Listening on port %s\n", port)
-	http.ListenAndServe("127.0.0.1:"+port, nil)
+    fmt.Printf("Listening on port %s
+", port)
+    http.ListenAndServe("127.0.0.1:"+port, nil)
 }
 
 func loadPort(defaultPort string) string {
-	f, err := os.Open(".env")
-	if err != nil {
-		return defaultPort
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, "PORT=") {
-			return strings.Trim(strings.TrimPrefix(line, "PORT="), "\"'")
-		}
-	}
-	return defaultPort
+    f, err := os.Open(".env")
+    if err != nil {
+        return defaultPort
+    }
+    defer f.Close()
+    scanner := bufio.NewScanner(f)
+    for scanner.Scan() {
+        line := strings.TrimSpace(scanner.Text())
+        if strings.HasPrefix(line, "PORT=") {
+            return strings.Trim(strings.TrimPrefix(line, "PORT="), ""'")
+        }
+    }
+    return defaultPort
 }
 GOEOF
     chown "$user:$user" "$APP_DIR/main.go"
     chmod 644 "$APP_DIR/main.go"
 fi
 
-# --- Go build ---
 GO_BIN=$(command -v go 2>/dev/null || echo "/usr/local/go/bin/go")
 if [ -f "$APP_DIR/main.go" ] && [ -x "$GO_BIN" ]; then
     cd "$APP_DIR"
@@ -89,25 +93,15 @@ if [ -f "$APP_DIR/main.go" ] && [ -x "$GO_BIN" ]; then
     chmod 755 "$APP_DIR/server" 2>/dev/null
 fi
 
-# --- Detect binary ---
 BINARY="$APP_DIR/server"
-if [ ! -f "$BINARY" ]; then
-    if [ -f "$APP_DIR/app" ]; then
-        BINARY="$APP_DIR/app"
-    fi
+if [ ! -f "$BINARY" ] && [ -f "$APP_DIR/app" ]; then
+    BINARY="$APP_DIR/app"
 fi
 
-# --- Read PORT from .env ---
-PORT=$(grep -oP '^PORT=\K.*' "$ENV_FILE" 2>/dev/null | tr -d '"' | tr -d "'")
-if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
-    PORT=$DEFAULT_PORT
-fi
+REQUESTED_PORT=$(mannn_read_env_value PORT "$ENV_FILE")
+PORT=$(mannn_resolve_port "$REQUESTED_PORT" "$DEFAULT_PORT" "$PORT_MIN" "$PORT_MAX")
 
-# --- Clean old proxy configs ---
 rm -f "$PROXY_CONF" "$PROXY_SSL_CONF"
-
-# --- Generate nginx proxy configs ---
-mkdir -p "$CONF_DIR"
 
 cat > "$PROXY_CONF" << PROXYEOF
 location / {
@@ -144,7 +138,6 @@ PROXYEOF
 chown "root:$user" "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null
 chmod 640 "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null
 
-# --- Systemd service ---
 cat > "$SVC_FILE" << SVCEOF
 [Unit]
 Description=Go app for $domain

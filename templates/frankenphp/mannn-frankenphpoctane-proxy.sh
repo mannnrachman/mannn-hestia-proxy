@@ -9,37 +9,41 @@ ip="$3"
 home="$4"
 docroot="$5"
 
+. "/usr/local/hestia/data/templates/web/nginx/php-fpm/mannn-security.sh"
+
 APP_DIR="$home/$user/web/$domain/private/php"
 ENV_FILE="$APP_DIR/.env"
 CONF_DIR="$home/$user/conf/web/$domain"
 PROXY_CONF="$CONF_DIR/nginx.proxy.conf"
 PROXY_SSL_CONF="$CONF_DIR/nginx.proxy.ssl.conf"
-DEFAULT_PORT=8080
-SVC_NAME="mannn-$(echo "$domain" | tr '.' '-')"
+DEFAULT_PORT=8180
+PORT_MIN=8180
+PORT_MAX=8999
+SVC_NAME="$(mannn_unit_name "$user" "$domain")"
 SVC_FILE="/etc/systemd/system/$SVC_NAME.service"
 
-# --- App directory ---
-mkdir -p "$APP_DIR"
-chown "$user:$user" "$APP_DIR"
-chmod 755 "$APP_DIR"
+mannn_prepare_dir "$APP_DIR" "$user:$user" 755
+mannn_prepare_dir "$CONF_DIR" "$user:$user" 750
+mannn_abort_if_symlink "$ENV_FILE"
+mannn_abort_if_symlink "$PROXY_CONF"
+mannn_abort_if_symlink "$PROXY_SSL_CONF"
+mannn_abort_if_symlink "$SVC_FILE"
 
-# --- Default .env ---
 if [ ! -f "$ENV_FILE" ]; then
     echo "PORT=$DEFAULT_PORT" > "$ENV_FILE"
 fi
 chown "$user:$user" "$ENV_FILE" 2>/dev/null
 chmod 600 "$ENV_FILE"
 
-# --- Placeholder index.php ---
 if [ ! -f "$APP_DIR/index.php" ] && [ ! -f "$APP_DIR/public/index.php" ]; then
     cat > "$APP_DIR/index.php" << 'PHPEOF'
 <?php
-$port = 8080;
+$port = 8180;
 $envFile = __DIR__ . '/.env';
 if (file_exists($envFile)) {
     $env = file_get_contents($envFile);
     if (preg_match('/^PORT=(.+)$/m', $env, $m)) {
-        $port = trim($m[1], "\"' \t");
+        $port = trim($m[1], ""' 	");
     }
 }
 
@@ -55,35 +59,24 @@ PHPEOF
     chmod 644 "$APP_DIR/index.php"
 fi
 
-# --- Read PORT from .env ---
-PORT=$(grep -oP '^PORT=\K.*' "$ENV_FILE" 2>/dev/null | tr -d '"' | tr -d "'")
-if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
-    PORT=$DEFAULT_PORT
-fi
+REQUESTED_PORT=$(mannn_read_env_value PORT "$ENV_FILE")
+PORT=$(mannn_resolve_port "$REQUESTED_PORT" "$DEFAULT_PORT" "$PORT_MIN" "$PORT_MAX")
 
-# --- Detect app type and build ExecStart ---
 FRANKENPHP_BIN=$(command -v frankenphp 2>/dev/null || echo "/usr/local/bin/frankenphp")
 PHP_BIN=$(command -v php 2>/dev/null || echo "/usr/bin/php")
 
 if [ -f "$APP_DIR/artisan" ]; then
-    # Laravel project → Laravel Octane
     EXEC_START="$PHP_BIN $APP_DIR/artisan octane:start --server=frankenphp --host=127.0.0.1 --port=$PORT"
     DESC="Laravel Octane app for $domain"
 elif [ -f "$APP_DIR/public/index.php" ]; then
-    # Has public/ directory → serve public
     EXEC_START="$FRANKENPHP_BIN php-server --root $APP_DIR/public --listen 127.0.0.1:$PORT"
     DESC="PHP app for $domain (FrankenPHP)"
 else
-    # Plain PHP → serve root
     EXEC_START="$FRANKENPHP_BIN php-server --root $APP_DIR --listen 127.0.0.1:$PORT"
     DESC="PHP app for $domain (FrankenPHP)"
 fi
 
-# --- Clean old proxy configs ---
 rm -f "$PROXY_CONF" "$PROXY_SSL_CONF"
-
-# --- Generate nginx proxy configs ---
-mkdir -p "$CONF_DIR"
 
 cat > "$PROXY_CONF" << PROXYEOF
 location / {
@@ -120,7 +113,6 @@ PROXYEOF
 chown "root:$user" "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null
 chmod 640 "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null
 
-# --- Systemd service ---
 cat > "$SVC_FILE" << SVCEOF
 [Unit]
 Description=$DESC

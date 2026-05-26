@@ -62,12 +62,12 @@ Receives 5 positional arguments:
 
 ```
 1. Create app directory        → mkdir -p, chown, chmod
-2. Create default .env         → PORT=3000 (if not exists)
+2. Create default .env         → runtime-specific safe default port
 3. Create placeholder code     → server.js / main.go / app.py (if not exists)
 4. Go: auto-compile            → go build -o server (if main.go exists)
-5. Read PORT from .env         → parse .env file
+5. Validate PORT from .env     → allow only runtime-specific safe port range
 6. Generate nginx proxy config → nginx.proxy.conf + nginx.proxy.ssl.conf
-7. Create systemd service      → /etc/systemd/system/mannn-{domain}.service
+7. Create unique systemd service → /etc/systemd/system/mannn-{user}-{hash}.service
 8. Enable + start service      → systemctl enable + start (or restart)
 ```
 
@@ -75,8 +75,8 @@ Receives 5 positional arguments:
 
 Traditional approach: one template per port (static).
 ```
-template-nodejs-3000.tpl → proxy_pass http://127.0.0.1:3000
-template-nodejs-3001.tpl → proxy_pass http://127.0.0.1:3001
+template-nodejs-3100.tpl → proxy_pass http://127.0.0.1:3100
+template-nodejs-3101.tpl → proxy_pass http://127.0.0.1:3101
 ```
 
 mannn-hestia-proxy approach: one template, port from .env (dynamic).
@@ -104,18 +104,18 @@ After template is applied to domain `api.example.com` for user `myuser`:
 └── web/api.example.com/
     └── private/
         └── nodejs/              ← app directory
-            ├── .env             ← PORT=3000
+            ├── .env             ← PORT=3100
             └── server.js        ← app code
 
 /etc/systemd/system/
-└── mannn-api-example-com.service  ← auto-created systemd service
+└── mannn-myuser-a1b2c3d4e5f6.service  ← auto-created systemd service
 ```
 
 ## Generated Systemd Service
 
-Naming: `mannn-{domain}` where dots are replaced with dashes.
+Naming: `mannn-{user}-{hash(domain)}` to prevent collisions between similar domain strings.
 
-Example for `api.example.com` → `mannn-api-example-com.service`:
+Example for user `myuser` and `api.example.com` → `mannn-myuser-a1b2c3d4e5f6.service`:
 
 ```ini
 [Unit]
@@ -131,7 +131,7 @@ ExecStart=/usr/local/node/bin/node server.js
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
-Environment=PORT=3000
+Environment=PORT=3100
 
 [Install]
 WantedBy=multi-user.target
@@ -164,3 +164,25 @@ When you re-apply a template (`v-change-web-domain-tpl`):
 - Go binary — **rebuilt** only if no binary exists and main.go exists
 
 This means re-applying is safe — it won't overwrite your app code.
+
+
+## Security Hardening
+
+All runtime templates source a shared helper file `mannn-security.sh` during installation. The helper provides:
+
+- collision-safe service/container naming based on `user + sha256(domain)`
+- blocked-port enforcement for control-plane and common infrastructure ports
+- per-runtime localhost port allowlists
+- basic symlink rejection before root writes files
+
+### Docker hardening
+
+The Docker template no longer runs `docker compose up -d --build` or `docker build` against user-writable files. Instead, it only accepts a prebuilt image reference via `.env`:
+
+```
+IMAGE=nginx:alpine
+CONTAINER_PORT=8080
+PORT=9100
+```
+
+If `Dockerfile`, `docker-compose.yml`, `compose.yaml`, or `compose.yml` are present, the hardened template exits with an error.

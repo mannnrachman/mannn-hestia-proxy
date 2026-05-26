@@ -8,17 +8,17 @@ Common issues and fixes.
 
 ```bash
 # Check if service is running
-systemctl status mannn-{domain}
+systemctl list-units --type=service | grep mannn-
 
 # Check app logs
-journalctl -u mannn-{domain} -n 50 --no-pager
+journalctl -u mannn-<generated-name> -n 50 --no-pager
 
 # Verify port matches
 cat /home/{user}/web/{domain}/private/{runtime}/.env
 # Compare with what the app actually listens on
 
 # Restart service
-systemctl restart mannn-{domain}
+systemctl restart mannn-<generated-name>
 ```
 
 ## 203/EXEC Error (systemd)
@@ -28,7 +28,7 @@ systemctl restart mannn-{domain}
 Common for Node.js:
 ```bash
 # Check which node binary the service uses
-grep ExecStart /etc/systemd/system/mannn-{domain}.service
+grep ExecStart /etc/systemd/system/mannn-<generated-name>.service
 
 # Verify the binary exists and is executable
 ls -la /usr/local/node/bin/node
@@ -62,9 +62,9 @@ getent passwd {user}
 chsh -s /bin/bash {user}
 
 # Option B: Change service user manually
-# Edit /etc/systemd/system/mannn-{domain}.service
+# Edit /etc/systemd/system/mannn-<generated-name>.service
 # Change User={user} to a user that can access the directory
-# Then: systemctl daemon-reload && systemctl restart mannn-{domain}
+# Then: systemctl daemon-reload && systemctl restart mannn-<generated-name>
 ```
 
 ## Connection Refused
@@ -91,10 +91,10 @@ v-change-web-domain-tpl {user} {domain} mannn-proxy-{runtime}
 
 ```bash
 # Find what's using the port
-ss -tlnp | grep :3000
+ss -tlnp | grep :3100
 
 # Option A: Change .env to use a different port
-echo "PORT=3005" > /home/{user}/web/{domain}/private/nodejs/.env
+echo "PORT=3105" > /home/{user}/web/{domain}/private/nodejs/.env
 v-change-web-domain-tpl {user} {domain} mannn-nodejs-proxy
 
 # Option B: Stop the conflicting service
@@ -110,8 +110,8 @@ systemctl stop mannn-other-domain
 sudo ./install.sh
 
 # Verify files exist
-ls /usr/local/hestia/data/templates/web/nginx/php-fpm/mannn-proxy-*
-# Should show 9 files (3 per template: .tpl, .stpl, .sh)
+ls /usr/local/hestia/data/templates/web/nginx/php-fpm/mannn-*
+# Should show the runtime templates plus mannn-security.sh
 
 # Refresh HestiaCP panel (Ctrl+F5)
 ```
@@ -135,7 +135,7 @@ systemctl reload nginx
 
 ```bash
 # Check detailed logs
-journalctl -u mannn-{domain} -n 100 --no-pager
+journalctl -u mannn-<generated-name> -n 100 --no-pager
 
 # Common issues:
 # - Missing dependencies (npm install, pip install, go mod tidy)
@@ -219,7 +219,7 @@ Note: this file is regenerated on template re-apply, so changes will be lost.
 frankenphp version
 
 # Check service logs
-journalctl -u mannn-{domain} -n 50 --no-pager
+journalctl -u mannn-<generated-name> -n 50 --no-pager
 
 # Common issues:
 # - FrankenPHP binary not found: install to /usr/local/bin/frankenphp
@@ -237,25 +237,31 @@ systemctl status docker
 docker ps -a
 
 # Check specific container
-docker logs mannn-{domain}
+docker ps -a --format "{{.Names}}" | grep "^mannn-"
+# then inspect the generated container name with: docker logs mannn-<generated-name>
 
 # Common issues:
-# - Dockerfile syntax error: docker build -t test /home/{user}/web/{domain}/private/docker/
+# - IMAGE= points to a missing or private image
 # - Port already in use: change PORT in .env
 # - Container exits immediately: check docker logs for crash reason
-# - Permission denied on docker socket: user needs docker group or run with sudo
+# - Docker daemon unavailable: verify docker.service
 ```
 
 ## Docker Port Mapping Wrong
 
-The `.env` for Docker has TWO port variables:
+The `.env` for Docker has three variables:
 ```
-PORT=9000            # host port — what nginx proxies to
-CONTAINER_PORT=80    # port inside the container
+PORT=9100            # host port — what nginx proxies to
+CONTAINER_PORT=8080  # port inside the container
+IMAGE=nginx:alpine   # prebuilt image only
 ```
 
 If the app inside the container listens on port 3000:
 ```bash
-echo -e "PORT=9000\nCONTAINER_PORT=3000" > /home/{user}/web/{domain}/private/docker/.env
+cat > /home/{user}/web/{domain}/private/docker/.env <<EOF
+PORT=9100
+CONTAINER_PORT=3000
+IMAGE=ghcr.io/example/app:latest
+EOF
 v-change-web-domain-tpl {user} {domain} mannn-docker-proxy
 ```

@@ -40,9 +40,9 @@ v-change-web-domain-tpl devuser myapi.example.com mannn-nodejs-proxy
 
 This auto-creates:
 - `/home/devuser/web/myapi.example.com/private/nodejs/` directory
-- `.env` with `PORT=3000`
+- `.env` with `PORT=3100`
 - Placeholder `server.js`
-- Systemd service `mannn-myapi-example-com`
+- Collision-safe systemd service `mannn-devuser-<hash>`
 - Nginx proxy config
 
 Verify:
@@ -71,7 +71,7 @@ v-change-web-domain-tpl devuser myapi.example.com mannn-nodejs-proxy
 ### Step 4: Custom port (optional)
 
 ```bash
-echo "PORT=3005" > /home/devuser/web/myapi.example.com/private/nodejs/.env
+echo "PORT=3105" > /home/devuser/web/myapi.example.com/private/nodejs/.env
 v-change-web-domain-tpl devuser myapi.example.com mannn-nodejs-proxy
 ```
 
@@ -101,7 +101,8 @@ If you prefer to compile manually:
 cd /home/devuser/web/goapi.example.com/private/go/
 go build -o server .
 # Then restart service
-systemctl restart mannn-goapi-example-com
+systemctl list-units --type=service | grep mannn-
+# then restart the generated mannn-* unit for this domain
 ```
 
 ## Full Workflow: Python App
@@ -160,49 +161,44 @@ php artisan octane:install --server=frankenphp
 v-add-web-domain devuser dockerapp.example.com
 v-change-web-domain-tpl devuser dockerapp.example.com mannn-docker-proxy
 
-# Upload your Dockerfile or docker-compose.yml
+# Hardened mode: use a prebuilt image only
 cd /home/devuser/web/dockerapp.example.com/private/docker/
-rm Dockerfile  # remove placeholder
-# Upload: Dockerfile + any files, OR docker-compose.yml
+cat > .env <<EOF
+PORT=9100
+CONTAINER_PORT=8080
+IMAGE=nginx:alpine
+EOF
 ```
 
-Auto-detection:
-- `docker-compose.yml` exists → `docker compose up -d --build`
-- `Dockerfile` exists → `docker build` + `docker run -p 127.0.0.1:{PORT}:{CONTAINER_PORT}`
-
-`.env` for Docker has two ports:
-```
-PORT=9000            # host port — nginx proxies here
-CONTAINER_PORT=80    # port inside the container
-```
-
-Container naming: `mannn-{domain}` (dots → dashes)
+Docker hardening:
+- `Dockerfile`, `docker-compose.yml`, `compose.yaml`, and `compose.yml` are rejected
+- the template only runs `docker pull` + `docker run` for `IMAGE=` from `.env`
+- service/container names are collision-safe and generated as `mannn-{user}-{hash(domain)}`
 
 Manage containers:
 ```bash
-docker ps                                    # list running containers
-docker logs mannn-dockerapp-example-com       # view logs
-docker restart mannn-dockerapp-example-com    # restart
-docker stop mannn-dockerapp-example-com       # stop
+docker ps -a --format '{{.Names}}' | grep '^mannn-'
+# then use the generated container name for logs/restart/stop
 ```
 
 ## Managing Services
 
 ```bash
 # Check status
-systemctl status mannn-myapi-example-com
+systemctl list-units --type=service | grep mannn-
+# then inspect the generated unit for this domain
 
 # View logs
-journalctl -u mannn-myapi-example-com -f
+journalctl -u mannn-<generated-name> -f
 
 # Restart manually
-systemctl restart mannn-myapi-example-com
+systemctl restart mannn-<generated-name>
 
 # Stop
-systemctl stop mannn-myapi-example-com
+systemctl stop mannn-<generated-name>
 
 # Start
-systemctl start mannn-myapi-example-com
+systemctl start mannn-<generated-name>
 ```
 
 ## Migrating from PHP Template
@@ -224,8 +220,8 @@ To switch a domain from one runtime to another:
 
 ```bash
 # Stop old service first
-systemctl stop mannn-myapp-example-com
-systemctl disable mannn-myapp-example-com
+systemctl list-units --type=service | grep mannn-
+# stop/disable the generated unit for the old runtime before switching templates
 
 # Apply new template
 v-change-web-domain-tpl devuser myapp.example.com mannn-go-proxy
@@ -249,8 +245,8 @@ rm /usr/local/hestia/data/templates/web/nginx/php-fpm/mannn-python-proxy.*
 v-change-web-domain-tpl devuser myapp.example.com default
 
 # Stop and remove systemd services
-systemctl stop mannn-myapp-example-com
-systemctl disable mannn-myapp-example-com
+systemctl list-units --type=service | grep mannn-
+# stop/disable the generated unit for the old runtime before switching templates
 rm /etc/systemd/system/mannn-myapp-example-com.service
 systemctl daemon-reload
 ```

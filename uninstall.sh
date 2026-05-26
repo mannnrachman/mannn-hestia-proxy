@@ -18,8 +18,8 @@ TPL_DIR="/usr/local/hestia/data/templates/web/nginx/php-fpm"
 
 echo "Removing mannn-hestia-proxy templates..."
 
-for name in mannn-nodejs-proxy mannn-go-proxy mannn-python-proxy mannn-frankenphpoctane-proxy mannn-docker-proxy; do
-    for ext in tpl stpl sh; do
+for name in mannn-security mannn-nodejs-proxy mannn-go-proxy mannn-python-proxy mannn-frankenphpoctane-proxy mannn-docker-proxy; do
+    for ext in sh tpl stpl; do
         FILE="$TPL_DIR/$name.$ext"
         if [ -f "$FILE" ]; then
             rm "$FILE"
@@ -33,9 +33,9 @@ echo "Templates removed."
 echo ""
 echo "NOTE: Systemd services (mannn-*) and app directories are NOT removed."
 echo "To clean up services manually:"
-echo "  systemctl stop mannn-{domain}"
-echo "  systemctl disable mannn-{domain}"
-echo "  rm /etc/systemd/system/mannn-{domain}.service"
+echo "  systemctl stop mannn-{generated-name}"
+echo "  systemctl disable mannn-{generated-name}"
+echo "  rm /etc/systemd/system/mannn-{generated-name}.service"
 echo "  systemctl daemon-reload"
 echo ""
 echo "Switch domains back to a PHP template before removing services:"
