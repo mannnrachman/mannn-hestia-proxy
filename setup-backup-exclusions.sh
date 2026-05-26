@@ -3,8 +3,10 @@
 # Excludes heavy runtime dirs (node_modules, venv, vendor, binaries) from HestiaCP backups
 # These dirs are auto-rebuilt when re-applying the template after restore.
 #
-# Usage: sudo ./setup-backup-exclusions.sh <user>
-# To apply for all users: for u in $(v-list-users plain | cut -f1); do sudo ./setup-backup-exclusions.sh $u; done
+# Usage:
+#   sudo ./setup-backup-exclusions.sh <user>           # apply exclusions
+#   sudo ./setup-backup-exclusions.sh <user> --revert  # restore previous config
+#   All users: for u in $(v-list-users plain | cut -f1); do sudo ./setup-backup-exclusions.sh $u; done
 
 set -e
 
@@ -19,12 +21,13 @@ if [ ! -d /usr/local/hestia ]; then
 fi
 
 if [ -z "$1" ]; then
-    echo "Usage: sudo ./setup-backup-exclusions.sh <user>"
-    echo "       Applies to all users: for u in \$(v-list-users plain | cut -f1); do sudo ./setup-backup-exclusions.sh \$u; done"
+    echo "Usage: sudo ./setup-backup-exclusions.sh <user> [--revert]"
+    echo "       All users: for u in \$(v-list-users plain | cut -f1); do sudo ./setup-backup-exclusions.sh \$u; done"
     exit 1
 fi
 
 user="$1"
+action="$2"
 HESTIA="/usr/local/hestia"
 USER_DATA="$HESTIA/data/users/$user"
 CONF="$USER_DATA/backup-excludes.conf"
@@ -35,7 +38,22 @@ if [ ! -d "$USER_DATA" ]; then
     exit 1
 fi
 
-# Build exclusion file
+# --- Revert mode ---
+if [ "$action" = "--revert" ]; then
+    LATEST_BAK=$(ls -t "$CONF.bak."* 2>/dev/null | head -1)
+    if [ -z "$LATEST_BAK" ]; then
+        echo "No backup found for user '$user'. Nothing to revert."
+        exit 1
+    fi
+
+    cp "$LATEST_BAK" "$CONF"
+    chmod 660 "$CONF"
+    echo "Reverted backup exclusions for '$user' from $(basename "$LATEST_BAK")."
+    echo "Backup file kept: $LATEST_BAK"
+    exit 0
+fi
+
+# --- Apply mode ---
 TMPFILE=$(mktemp)
 trap "rm -f $TMPFILE" EXIT
 
@@ -103,3 +121,5 @@ echo "  private/php/vendor          (PHP — composer install)"
 echo "  private/php/node_modules    (PHP — npm install)"
 echo ""
 echo "Source code, .env, package.json, requirements.txt, go.mod, Dockerfile stay in backup."
+echo ""
+echo "To revert: sudo ./setup-backup-exclusions.sh $user --revert"

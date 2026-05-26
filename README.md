@@ -375,12 +375,17 @@ By default, HestiaCP backs up the entire domain directory — including `node_mo
 Run after installing templates:
 
 ```bash
-# Single user
+# Single user — apply exclusions
 sudo ./setup-backup-exclusions.sh myuser
 
 # All users
 for u in $(v-list-users plain | cut -f1); do sudo ./setup-backup-exclusions.sh $u; done
+
+# Revert to previous config (if needed)
+sudo ./setup-backup-exclusions.sh myuser --revert
 ```
+
+Script auto-backs up existing `backup-excludes.conf` before modifying. Use `--revert` to restore.
 
 What gets excluded (rebuilt on restore):
 
