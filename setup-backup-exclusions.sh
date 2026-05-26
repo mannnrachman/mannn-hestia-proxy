@@ -59,6 +59,8 @@ CRON_VAL=""
 USER_VAL=""
 
 if [ -f "$CONF" ]; then
+    # Backup existing config before modifying
+    cp "$CONF" "$CONF.bak.$(date +%Y%m%d%H%M%S)"
     WEB_VAL=$(grep '^WEB=' "$CONF" | head -1 | sed "s/^WEB='//" | sed "s/'$//")
     DNS_VAL=$(grep '^DNS=' "$CONF" | head -1 | sed "s/^DNS='//" | sed "s/'$//")
     MAIL_VAL=$(grep '^MAIL=' "$CONF" | head -1 | sed "s/^MAIL='//" | sed "s/'$//")
