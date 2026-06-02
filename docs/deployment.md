@@ -182,6 +182,8 @@ Contract:
 
 ## Managing Services
 
+For Node.js, Go, Python, and FrankenPHP templates:
+
 ```bash
 # Check status
 systemctl list-units --type=service | grep mannn-
@@ -198,6 +200,15 @@ systemctl stop mannn-<generated-name>
 
 # Start
 systemctl start mannn-<generated-name>
+```
+
+For Docker proxy-only template, manage the backend outside Hestia, for example:
+
+```bash
+cd /srv/stack.example.com
+docker compose ps
+docker compose logs -f
+docker compose restart
 ```
 
 ## Migrating from PHP Template

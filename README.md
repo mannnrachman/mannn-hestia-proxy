@@ -29,7 +29,8 @@ nginx (port 80/443) → proxy_pass to 127.0.0.1:{PORT} → your app
 Security hardening in this version:
 - each runtime only accepts a dedicated localhost port range
 - blocked internal/control-panel ports automatically fall back to a safe default
-- service/container names use a collision-safe hash
+- systemd service names use a collision-safe hash
+- Docker backends stay external to the template
 - Docker mode is proxy-only for CI/CD, Compose, and admin-managed stacks
 
 ## Runtime Installation Model
@@ -317,7 +318,7 @@ All permissions match HestiaCP standard:
 | Source files | `user:user` | `644` | Standard |
 | `nginx.proxy.conf` | `root:user` | `640` | Same as HestiaCP `nginx.conf` |
 | Systemd service | `root:root` | `644` | Standard |
-| Docker container (simple mode) | — | — | Runs in Docker's own namespace |
+| Docker backend/container | external | external | Managed outside the template |
 
 ## Documentation
 
@@ -387,7 +388,7 @@ mannn-hestia-proxy/
 | Template files | `mannn-{runtime}-proxy.{tpl,stpl,sh}` | `mannn-nodejs-proxy.sh` |
 | Template name in HestiaCP | `mannn-{runtime}-proxy` | `mannn-go-proxy` |
 | Systemd service | `mannn-{user}-{hash(domain)}` | `mannn-myuser-a1b2c3d4e5f6` |
-| Docker container | `mannn-{user}-{hash(domain)}` | `mannn-myuser-a1b2c3d4e5f6` |
+| Docker backend/container | external | e.g. your own Compose service name |
 | App directory | `private/{runtime}/` | `private/nodejs/` |
 
 To use a different prefix, find-and-replace `mannn` across all files before running `install.sh`.
@@ -423,7 +424,7 @@ What gets excluded (rebuilt on restore):
 | `private/php/vendor` | Large, reinstallable | `composer install` |
 | `private/php/node_modules` | Large, reinstallable | `npm install` |
 
-What stays in backup: source code, `.env`, `package.json`, `requirements.txt`, `go.mod`, and other small app configuration files. In hardened Docker mode, build/compose files are intentionally not used.
+What stays in backup: source code, `.env`, `package.json`, `requirements.txt`, `go.mod`, and other small app configuration files. In proxy-only Docker mode, the Hestia directory usually only needs `.env`; your real Docker files can live in a separate deployment directory managed by CI/CD or admin operations.
 
 Uses HestiaCP's native `v-update-user-backup-exclusions` with `*` wildcard — safe because non-proxy domains don't have these paths.
 

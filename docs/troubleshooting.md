@@ -6,6 +6,8 @@ Common issues and fixes.
 
 **Cause**: Backend app not running or wrong port.
 
+For Node.js, Go, Python, and FrankenPHP templates:
+
 ```bash
 # Check if service is running
 systemctl list-units --type=service | grep mannn-
@@ -20,6 +22,8 @@ cat /home/{user}/web/{domain}/private/{runtime}/.env
 # Restart service
 systemctl restart mannn-<generated-name>
 ```
+
+For Docker proxy-only template, skip systemd here and use the Docker troubleshooting section below.
 
 ## 203/EXEC Error (systemd)
 
@@ -227,7 +231,7 @@ journalctl -u mannn-<generated-name> -n 50 --no-pager
 # - Wrong PHP version: FrankenPHP bundles its own PHP, check compatibility
 ```
 
-## Docker Container Not Running
+## Docker Backend Not Running
 
 ```bash
 # Check Docker daemon
@@ -236,14 +240,15 @@ systemctl status docker
 # List containers
 docker ps -a
 
-# Check specific container
-docker ps -a --format "{{.Names}}" | grep "^mannn-"
-# then inspect the generated container name with: docker logs mannn-<generated-name>
+# If you use Compose, inspect your own stack directory
+cd /srv/{stack-name}
+docker compose ps
+docker compose logs --tail=100
 
 # Common issues:
 # - backend app/container is not running on the expected localhost port
 # - Port already in use: change BACKEND_PORT in .env
-# - Container exits immediately: check docker logs for crash reason
+# - Container exits immediately: check docker logs / compose logs for crash reason
 # - Docker daemon unavailable: verify docker.service
 ```
 
