@@ -215,7 +215,7 @@ if [ -n "$USERS" ]; then
     read -r answer
     if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
         for u in $USERS; do
-            "$SCRIPT_DIR/setup-backup-exclusions.sh" "$u" && echo "  $user ✓" || echo "  $user — skipped"
+            "$SCRIPT_DIR/setup-backup-exclusions.sh" "$u" && echo "  $u ✓" || echo "  $u — skipped"
         done
     fi
 else

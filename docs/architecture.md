@@ -179,12 +179,10 @@ All runtime templates source a shared helper file `mannn-security.sh` during ins
 
 ### Docker hardening
 
-The Docker template no longer runs `docker compose up -d --build` or `docker build` against user-writable files. Instead, it only accepts a prebuilt image reference via `.env`:
+The Docker template no longer runs `docker compose up -d --build`, `docker build`, `docker pull`, or `docker run` against user-writable files. It only reads a localhost backend port from `.env` and writes nginx proxy configuration:
 
 ```
-IMAGE=nginx:alpine
-CONTAINER_PORT=8080
-PORT=9100
+BACKEND_PORT=9100
 ```
 
-If `Dockerfile`, `docker-compose.yml`, `compose.yaml`, or `compose.yml` are present, the hardened template exits with an error.
+Your container or compose stack must be started separately and listen on `127.0.0.1:BACKEND_PORT`.

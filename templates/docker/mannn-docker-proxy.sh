@@ -11,7 +11,7 @@ docroot="$5"
 
 . "/usr/local/hestia/data/templates/web/nginx/php-fpm/mannn-security.sh"
 
-APP_DIR="$home/$user/web/$domain/private/docker-backend"
+APP_DIR="$home/$user/web/$domain/private/docker"
 ENV_FILE="$APP_DIR/.env"
 CONF_DIR="$home/$user/conf/web/$domain"
 PROXY_CONF="$CONF_DIR/nginx.proxy.conf"

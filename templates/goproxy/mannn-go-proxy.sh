@@ -60,8 +60,7 @@ func main() {
         })
     })
 
-    fmt.Printf("Listening on port %s
-", port)
+    fmt.Printf("Listening on port %s\n", port)
     http.ListenAndServe("127.0.0.1:"+port, nil)
 }
 
@@ -75,7 +74,7 @@ func loadPort(defaultPort string) string {
     for scanner.Scan() {
         line := strings.TrimSpace(scanner.Text())
         if strings.HasPrefix(line, "PORT=") {
-            return strings.Trim(strings.TrimPrefix(line, "PORT="), ""'")
+            return strings.Trim(strings.TrimPrefix(line, "PORT="), "\"'")
         }
     }
     return defaultPort

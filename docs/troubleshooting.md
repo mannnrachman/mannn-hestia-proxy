@@ -241,27 +241,23 @@ docker ps -a --format "{{.Names}}" | grep "^mannn-"
 # then inspect the generated container name with: docker logs mannn-<generated-name>
 
 # Common issues:
-# - IMAGE= points to a missing or private image
-# - Port already in use: change PORT in .env
+# - backend app/container is not running on the expected localhost port
+# - Port already in use: change BACKEND_PORT in .env
 # - Container exits immediately: check docker logs for crash reason
 # - Docker daemon unavailable: verify docker.service
 ```
 
 ## Docker Port Mapping Wrong
 
-The `.env` for Docker has three variables:
+The `.env` for Docker has one required variable:
 ```
-PORT=9100            # host port — what nginx proxies to
-CONTAINER_PORT=8080  # port inside the container
-IMAGE=nginx:alpine   # prebuilt image only
+BACKEND_PORT=9100    # localhost port nginx proxies to
 ```
 
-If the app inside the container listens on port 3000:
+If your app/container listens on port 9101 on localhost:
 ```bash
 cat > /home/{user}/web/{domain}/private/docker/.env <<EOF
-PORT=9100
-CONTAINER_PORT=3000
-IMAGE=ghcr.io/example/app:latest
+BACKEND_PORT=9101
 EOF
 v-change-web-domain-tpl {user} {domain} mannn-docker-proxy
 ```

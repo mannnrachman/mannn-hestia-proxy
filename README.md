@@ -172,7 +172,7 @@ This mode does **not** run Docker for you.
 Use it when:
 - CI/CD deploys your container separately
 - you use `docker compose up -d` outside the template
-- one domain needs a backend already listening on `127.0.0.1:PORT`
+- one domain needs a backend already listening on `127.0.0.1:BACKEND_PORT`
 
 Flow:
 ```
@@ -340,7 +340,7 @@ All permissions match HestiaCP standard:
 
 **Permission denied**: Re-apply template to auto-fix: `v-change-web-domain-tpl user domain template`
 
-**Docker image fails to start**: verify `IMAGE=` and `CONTAINER_PORT=` in `.env`, then re-apply the template.
+**Docker backend fails to start**: verify your app/container is running and `BACKEND_PORT=` in `.env` matches the localhost port, then re-apply the template if needed.
 
 ## File Reference
 
@@ -464,7 +464,7 @@ MIT
 
 ## Security Notes
 
-Docker mode is proxy-only. The template never runs `docker build`, `docker pull`, `docker run`, or `docker compose`. It only stores `BACKEND_PORT` and proxies nginx to `127.0.0.1:PORT`.
+Docker mode is proxy-only. The template never runs `docker build`, `docker pull`, `docker run`, or `docker compose`. It only stores `BACKEND_PORT` and proxies nginx to `127.0.0.1:BACKEND_PORT`.
 
 This is safer for CI/CD and advanced Docker stacks because deployment stays outside the Hestia template.
 
