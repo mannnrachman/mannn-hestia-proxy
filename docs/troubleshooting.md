@@ -265,3 +265,15 @@ IMAGE=ghcr.io/example/app:latest
 EOF
 v-change-web-domain-tpl {user} {domain} mannn-docker-proxy
 ```
+
+
+## Docker / Compose mode not reachable
+
+**Cause**: nginx proxy-only template is active, but no backend is listening on the configured localhost port.
+
+```bash
+cat /home/{user}/web/{domain}/private/docker/.env
+ss -tlnp | grep 9100
+
+# If nothing is listening, start your compose or container stack separately.
+```

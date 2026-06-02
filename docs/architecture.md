@@ -69,6 +69,8 @@ Receives 5 positional arguments:
 6. Generate nginx proxy config → nginx.proxy.conf + nginx.proxy.ssl.conf
 7. Create unique systemd service → /etc/systemd/system/mannn-{user}-{hash}.service
 8. Enable + start service      → systemctl enable + start (or restart)
+
+Docker backend mode is the exception: it only writes nginx proxy files from `BACKEND_PORT` and does not create a Docker service.
 ```
 
 ## Dynamic Proxy Pattern

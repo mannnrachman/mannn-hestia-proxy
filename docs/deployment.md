@@ -154,32 +154,31 @@ composer require laravel/octane
 php artisan octane:install --server=frankenphp
 ```
 
-## Full Workflow: Docker App
+## Full Workflow: Docker / Compose (CI/CD friendly)
 
 ```bash
-# Create domain and apply template
-v-add-web-domain devuser dockerapp.example.com
-v-change-web-domain-tpl devuser dockerapp.example.com mannn-docker-proxy
+# Create domain and apply proxy-only template
+v-add-web-domain devuser stack.example.com
+v-change-web-domain-tpl devuser stack.example.com mannn-docker-proxy
 
-# Hardened mode: use a prebuilt image only
-cd /home/devuser/web/dockerapp.example.com/private/docker/
+# Point nginx at your already-running backend
+cd /home/devuser/web/stack.example.com/private/docker/
 cat > .env <<EOF
-PORT=9100
-CONTAINER_PORT=8080
-IMAGE=nginx:alpine
+BACKEND_PORT=9100
 EOF
 ```
 
-Docker hardening:
-- `Dockerfile`, `docker-compose.yml`, `compose.yaml`, and `compose.yml` are rejected
-- the template only runs `docker pull` + `docker run` for `IMAGE=` from `.env`
-- service/container names are collision-safe and generated as `mannn-{user}-{hash(domain)}`
+Now start your stack separately, for example:
 
-Manage containers:
 ```bash
-docker ps -a --format '{{.Names}}' | grep '^mannn-'
-# then use the generated container name for logs/restart/stop
+cd /srv/stack.example.com
+docker compose up -d
 ```
+
+Contract:
+- your stack must listen on `127.0.0.1:BACKEND_PORT`
+- template does not build, pull, run, or stop Docker
+- best for CI/CD and complex apps
 
 ## Managing Services
 

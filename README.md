@@ -1,6 +1,6 @@
 # mannn-hestia-proxy
 
-Dynamic Nginx reverse proxy templates for **HestiaCP** — run Node.js, Go, Python, FrankenPHP, or safer prebuilt Docker images behind Nginx with per-domain port configuration.
+Dynamic Nginx reverse proxy templates for **HestiaCP** — run Node.js, Go, Python, FrankenPHP, or Docker / Compose backends behind Nginx with per-domain port configuration.
 
 ## Overview
 
@@ -19,7 +19,7 @@ Dynamic Nginx reverse proxy templates for **HestiaCP** — run Node.js, Go, Pyth
 | `mannn-go-proxy` | Go | `private/go/` | 4100 | systemd → compiled `server` binary |
 | `mannn-python-proxy` | Python | `private/python/` | 8100 | systemd → `python3 app.py` |
 | `mannn-frankenphpoctane-proxy` | PHP / Laravel | `private/php/` | 8180 | systemd → `frankenphp php-server` or `php artisan octane:start` |
-| `mannn-docker-proxy` | Docker | `private/docker/` | 9100 | Restricted container from prebuilt `IMAGE=` only |
+| `mannn-docker-proxy` | Docker / Compose | `private/docker/` | 9100 | Advanced mode: nginx proxy only to an existing localhost backend |
 
 All templates share the same pattern:
 ```
@@ -30,7 +30,19 @@ Security hardening in this version:
 - each runtime only accepts a dedicated localhost port range
 - blocked internal/control-panel ports automatically fall back to a safe default
 - service/container names use a collision-safe hash
-- Docker no longer builds or runs `docker-compose.yml` from user-writable files
+- Docker mode is proxy-only for CI/CD, Compose, and admin-managed stacks
+
+## Runtime Installation Model
+
+Runtimes are installed **once per server**, not once per user.
+
+- Node.js binary → one system-wide install
+- Go toolchain → one system-wide install
+- Python binary → one system-wide install
+- FrankenPHP binary → one system-wide install
+- Docker daemon → one system-wide install
+
+Per user/domain, you only store app code and local dependencies under `private/{runtime}/`.
 
 ## Quick Start (3 steps)
 
@@ -58,7 +70,7 @@ When you apply ANY template, the `.sh` script handles:
 | 2 | Creates `.env` with default PORT (`600`, `$user:$user`) |
 | 3 | Creates placeholder app (only if no app files exist) |
 | 4 | Generates nginx proxy config (`root:$user 640`) |
-| 5 | Creates and starts service (systemd for runtimes, Docker for containers) |
+| 5 | Creates and starts service (systemd for runtimes, nginx proxy only for Docker) |
 | 6 | Domain is live immediately |
 
 **Nothing manual** besides uploading your app code.
@@ -97,7 +109,7 @@ v-change-web-domain-tpl myuser myapp.example.com mannn-python-proxy
 # PHP / FrankenPHP / Laravel Octane
 v-change-web-domain-tpl myuser myapp.example.com mannn-frankenphpoctane-proxy
 
-# Docker
+# Docker / Compose
 v-change-web-domain-tpl myuser myapp.example.com mannn-docker-proxy
 ```
 
@@ -147,21 +159,24 @@ Auto-detect:
 - `public/index.php` exists → `frankenphp php-server --root public/`
 - Otherwise → `frankenphp php-server --root ./`
 
-#### Docker (`private/docker/`)
+#### Docker / Compose (`private/docker/`)
 ```bash
 cd /home/myuser/web/myapp.example.com/private/docker/
-# hardened mode: do not place Dockerfile or compose files here
-# only edit .env and point IMAGE to a prebuilt image
+cat > .env <<EOF
+BACKEND_PORT=9100
+EOF
 ```
-Docker hardening:
-- `Dockerfile`, `docker-compose.yml`, `compose.yaml`, and `compose.yml` are refused by the hardened template
-- set a prebuilt image name in `.env` and the template will `docker pull` + run it with restricted flags
 
-`.env` has three variables for Docker:
+This mode does **not** run Docker for you.
+
+Use it when:
+- CI/CD deploys your container separately
+- you use `docker compose up -d` outside the template
+- one domain needs a backend already listening on `127.0.0.1:PORT`
+
+Flow:
 ```
-PORT=9100                # host port (nginx proxies here)
-CONTAINER_PORT=8080      # port inside the container
-IMAGE=nginx:alpine       # prebuilt image only
+nginx domain -> 127.0.0.1:BACKEND_PORT
 ```
 
 ### Step 6: Re-apply Template (restarts with your code)
@@ -184,15 +199,13 @@ curl http://myapp.example.com
 # Node.js: choose a port inside the allowed Node.js range (3100-3999)
 echo "PORT=3101" > /home/myuser/web/myapp.example.com/private/nodejs/.env
 
-# Docker: choose a port inside the allowed Docker range (9100-9999)
+# Docker / Compose: choose the localhost backend port
 cat > /home/myuser/web/myapp.example.com/private/docker/.env <<EOF
-PORT=9101
-CONTAINER_PORT=8080
-IMAGE=nginx:alpine
+BACKEND_PORT=9101
 EOF
 
 # Re-apply template
-v-change-web-domain-tpl myuser myapp.example.com mannn-nodejs-proxy
+v-change-web-domain-tpl myuser myapp.example.com mannn-docker-proxy
 ```
 
 ## Manage Service
@@ -206,12 +219,13 @@ mannn-myuser-a1b2c3d4e5f6
 To discover the exact name on a server later, list matching units or containers:
 
 ```bash
-# Systemd (Node.js, Go, Python, FrankenPHP, Docker unit)
+# Systemd (Node.js, Go, Python, FrankenPHP)
 systemctl list-units --type=service | grep mannn-
 ls /etc/systemd/system/mannn-*.service
 
-# Docker containers
-docker ps -a --format '{{.Names}}' | grep '^mannn-'
+# Docker / Compose backends are managed separately
+docker ps -a
+docker compose ps
 ```
 
 ## Directory Structure
@@ -281,14 +295,13 @@ docker ps -a --format '{{.Names}}' | grep '^mannn-'
 └── stats/
 ```
 
-### Docker
+### Docker / Compose
 ```
 /home/$USER/web/$DOMAIN/
 ├── public_html/          ← not used
 ├── private/
-│   └── docker/           ← app code here
-│       ├── .env          ← PORT=9100, CONTAINER_PORT=8080, IMAGE=nginx:alpine
-│       └── no build files ← Dockerfile / compose files are intentionally rejected
+│   └── docker/           ← backend proxy config only
+│       └── .env          ← BACKEND_PORT=9100
 ├── document_errors/
 └── stats/
 ```
@@ -304,7 +317,7 @@ All permissions match HestiaCP standard:
 | Source files | `user:user` | `644` | Standard |
 | `nginx.proxy.conf` | `root:user` | `640` | Same as HestiaCP `nginx.conf` |
 | Systemd service | `root:root` | `644` | Standard |
-| Docker container | — | — | Runs in Docker's own namespace |
+| Docker container (simple mode) | — | — | Runs in Docker's own namespace |
 
 ## Documentation
 
@@ -317,7 +330,7 @@ All permissions match HestiaCP standard:
 
 ## Troubleshooting
 
-**502 Bad Gateway**: App not running. Check the generated `mannn-*` service with `systemctl list-units --type=service | grep mannn-` or inspect containers with `docker ps -a`.
+**502 Bad Gateway**: Backend not running. Verify your Docker / Compose app is listening on `127.0.0.1:BACKEND_PORT`.
 
 **203/EXEC**: Binary not found. Ensure runtime installed system-wide.
 
@@ -451,7 +464,9 @@ MIT
 
 ## Security Notes
 
-This hardened release intentionally removes the old Docker build/compose workflow because it allowed root to execute build instructions from user-writable files. The new Docker template supports **prebuilt images only** via `IMAGE=` in `.env`.
+Docker mode is proxy-only. The template never runs `docker build`, `docker pull`, `docker run`, or `docker compose`. It only stores `BACKEND_PORT` and proxies nginx to `127.0.0.1:PORT`.
+
+This is safer for CI/CD and advanced Docker stacks because deployment stays outside the Hestia template.
 
 Per-runtime localhost port windows:
 

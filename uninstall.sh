@@ -3,7 +3,7 @@
 #
 # Usage:
 #   sudo ./uninstall.sh                  # interactive menu
-#   sudo ./uninstall.sh nodejs go python # uninstall specific templates only
+#   sudo ./uninstall.sh nodejs go python docker # uninstall specific templates only
 #   sudo ./uninstall.sh all              # uninstall all templates
 
 set -e
@@ -26,7 +26,7 @@ TEMPLATES=(
     "goproxy|mannn-go-proxy|Go proxy"
     "frankenphp|mannn-frankenphpoctane-proxy|FrankenPHP / Laravel Octane"
     "pypyroxy|mannn-python-proxy|Python proxy"
-    "docker|mannn-docker-proxy|Docker prebuilt image"
+    "docker|mannn-docker-proxy|Docker / Compose backend proxy only"
 )
 
 declare -A TPL_LABEL

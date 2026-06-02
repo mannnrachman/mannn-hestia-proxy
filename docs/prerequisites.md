@@ -109,7 +109,7 @@ frankenphp version
 # php artisan octane:install --server=frankenphp
 ```
 
-## 6. Install Docker (for Docker template)
+## 6. Install Docker (for Docker templates)
 
 ```bash
 # Install Docker
@@ -119,6 +119,7 @@ curl -fsSL https://get.docker.com | sh
 docker --version
 
 # (Optional) Add user to docker group
+# Needed only if a real user will run docker commands manually or via CI/CD.
 usermod -aG docker myuser
 ```
 
@@ -153,3 +154,15 @@ python3 --version
 frankenphp version
 docker --version
 ```
+
+
+## 9. Important Runtime Model
+
+Install Node.js, Go, Python, FrankenPHP, and Docker **once per server**.
+Do not install them separately for each Hestia user.
+
+Per user/domain you only keep:
+- app source code
+- `.env`
+- local deps like `node_modules/` or `venv/`
+- built binary like `private/go/server`

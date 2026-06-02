@@ -1,6 +1,6 @@
 #!/bin/bash
 # mannn-hestia-proxy — Install dynamic proxy templates for HestiaCP
-# Supports: Node.js, Go, Python, FrankenPHP/Laravel Octane, Docker (prebuilt image only)
+# Supports: Node.js, Go, Python, FrankenPHP/Laravel Octane, Docker / Compose proxy-only backend
 #
 # Usage:
 #   sudo ./install.sh                  # interactive menu
@@ -30,7 +30,7 @@ TEMPLATES=(
     "goproxy|mannn-go-proxy|Go proxy (4100-4999)"
     "frankenphp|mannn-frankenphpoctane-proxy|FrankenPHP / Laravel Octane (7100-7999)"
     "pypyroxy|mannn-python-proxy|Python proxy (8100-8999)"
-    "docker|mannn-docker-proxy|Docker prebuilt image (9100-9999)"
+    "docker|mannn-docker-proxy|Docker / Compose backend proxy only (9100-9999)"
 )
 
 # Build lookup arrays
@@ -202,7 +202,7 @@ echo "Security hardening enabled:"
 echo "  - localhost proxy ports restricted per runtime"
 echo "  - service/container names are collision-safe"
 if [ "${TPL_SELECTED[docker]}" -eq 1 ]; then
-    echo "  - Docker template only supports prebuilt images via IMAGE=..."
+    echo "  - Docker template is proxy-only: nginx -> 127.0.0.1:BACKEND_PORT"
 fi
 echo ""
 
