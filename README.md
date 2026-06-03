@@ -18,7 +18,7 @@ Dynamic Nginx reverse proxy templates for **HestiaCP** — run Node.js, Go, Pyth
 | `mannn-nodejs-proxy` | Node.js | `private/nodejs/` | 3100 | systemd → `node server.js` |
 | `mannn-go-proxy` | Go | `private/go/` | 4100 | systemd → compiled `server` binary |
 | `mannn-python-proxy` | Python | `private/python/` | 8100 | systemd → `python3 app.py` |
-| `mannn-frankenphpoctane-proxy` | PHP / Laravel | `private/php/` | 8180 | systemd → `frankenphp php-server` or `php artisan octane:start` |
+| `mannn-frankenphpoctane-proxy` | PHP / Laravel | `private/php/` | 7100 | systemd → `frankenphp php-server` or `php artisan octane:start` |
 | `mannn-docker-proxy` | Docker / Compose | `private/docker/` | 9100 | Advanced mode: nginx proxy only to an existing localhost backend |
 
 All templates share the same pattern:
@@ -32,6 +32,10 @@ Security hardening in this version:
 - systemd service names use a collision-safe hash
 - Docker backends stay external to the template
 - Docker mode is proxy-only for CI/CD, Compose, and admin-managed stacks
+- **nginx security headers** (`X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`)
+- **`/private/` path blocked** in nginx (returns 404)
+- **iptables firewall** auto-restricts app ports to localhost only (`! -i lo`)
+- **systemd sandbox** (`ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges`, `PrivateTmp`)
 
 ## Runtime Installation Model
 
@@ -71,8 +75,9 @@ When you apply ANY template, the `.sh` script handles:
 | 2 | Creates `.env` with default PORT (`600`, `$user:$user`) |
 | 3 | Creates placeholder app (only if no app files exist) |
 | 4 | Generates nginx proxy config (`root:$user 640`) |
-| 5 | Creates and starts service (systemd for runtimes, nginx proxy only for Docker) |
-| 6 | Domain is live immediately |
+| 5 | Creates and starts service with systemd sandbox (runtimes only) |
+| 6 | Adds iptables rule to restrict app port to localhost only |
+| 7 | Domain is live immediately |
 
 **Nothing manual** besides uploading your app code.
 
@@ -289,7 +294,7 @@ docker compose ps
 ├── public_html/          ← not used
 ├── private/
 │   └── php/              ← app code here
-│       ├── .env          ← PORT=8180
+│       ├── .env          ← PORT=7100
 │       ├── index.php     ← plain PHP entry
 │       └── artisan       ← if present → Laravel Octane mode
 ├── document_errors/
@@ -317,7 +322,8 @@ All permissions match HestiaCP standard:
 | `.env` | `user:user` | `600` | User private, others blocked |
 | Source files | `user:user` | `644` | Standard |
 | `nginx.proxy.conf` | `root:user` | `640` | Same as HestiaCP `nginx.conf` |
-| Systemd service | `root:root` | `644` | Standard |
+| Systemd service | `root:root` | `644` | Includes sandbox hardening |
+| iptables rule | auto | auto | Port restricted to localhost (`! -i lo`) |
 | Docker backend/container | external | external | Managed outside the template |
 
 ## Documentation
@@ -474,7 +480,19 @@ Per-runtime localhost port windows:
 - Node.js: `3100-3999`
 - Go: `4100-4999`
 - Python: `8100-8999`
-- FrankenPHP: `8180-8999`
+- FrankenPHP: `7100-7999`
 - Docker: `9100-9999`
 
 If an invalid or blocked port is requested, the template falls back to its safe default port.
+
+### Built-in Security Layers
+
+| Layer | Protection |
+|-------|-----------|
+| **iptables firewall** | App ports auto-restricted to localhost only (`! -i lo` DROP rule). External access blocked. |
+| **nginx security headers** | `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin` |
+| **nginx path protection** | `/private/` returns 404, dotfiles (`.env`, `.git`) blocked |
+| **systemd sandbox** | `ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges=true`, `PrivateTmp=true`, `ReadWritePaths` limited to app directory |
+| **symlink protection** | `mannn_abort_if_symlink()` prevents symlink attacks on config files |
+| **port validation** | `MANNN_BLOCKED_PORTS` blocks sensitive system ports, per-runtime range enforcement |
+| **user isolation** | Each app runs as its own system user, no shared privileges |
