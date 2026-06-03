@@ -42,6 +42,9 @@ chmod 600 "$ENV_FILE"
 REQUESTED_PORT=$(mannn_read_env_value BACKEND_PORT "$ENV_FILE")
 PORT=$(mannn_resolve_port "$REQUESTED_PORT" "$DEFAULT_PORT" "$PORT_MIN" "$PORT_MAX")
 
+# Restrict port to localhost only (firewall)
+mannn_restrict_port "$PORT" "$user" "$domain"
+
 rm -f "$PROXY_CONF" "$PROXY_SSL_CONF"
 
 cat > "$PROXY_CONF" << PROXYEOF

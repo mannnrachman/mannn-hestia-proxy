@@ -136,10 +136,21 @@ RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=$PORT
 
+    # Systemd sandbox hardening
+    ProtectSystem=strict
+    ProtectHome=read-only
+    NoNewPrivileges=true
+    PrivateTmp=true
+    ReadWritePaths=$APP_DIR
+    CapabilityBoundingSet=
+    AmbientCapabilities=
 [Install]
 WantedBy=multi-user.target
 SVCEOF
 
+
+# Restrict port to localhost only (firewall)
+mannn_restrict_port "$PORT" "$user" "$domain"
 systemctl daemon-reload >/dev/null 2>&1
 if systemctl is-active --quiet "$SVC_NAME" 2>/dev/null; then
     systemctl restart "$SVC_NAME" >/dev/null 2>&1

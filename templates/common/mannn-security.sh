@@ -82,3 +82,32 @@ mannn_resolve_port() {
         printf '%s' "$default_port"
     fi
 }
+
+# Restrict port to localhost only via iptables.
+# Creates a comment-tagged rule so it can be removed later.
+# Usage: mannn_restrict_port <port> <user> <domain>
+mannn_restrict_port() {
+    local port="$1"
+    local user="$2"
+    local domain="$3"
+    local comment="mannn-${user}-$(mannn_hash12 "$domain")-${port}"
+
+    # Remove old rule if exists (idempotent)
+    iptables -D INPUT -p tcp --dport "$port" ! -i lo -m comment --comment "$comment" -j DROP 2>/dev/null || true
+    iptables -D INPUT -p tcp --dport "$port" ! -s 127.0.0.1 -m comment --comment "$comment" -j DROP 2>/dev/null || true
+
+    # Block from any non-loopback interface (protects against external access)
+    iptables -I INPUT 1 -p tcp --dport "$port" ! -i lo -m comment --comment "$comment" -j DROP 2>/dev/null || true
+}
+
+# Remove port restriction (for cleanup/uninstall).
+# Usage: mannn_unrestrict_port <port> <user> <domain>
+mannn_unrestrict_port() {
+    local port="$1"
+    local user="$2"
+    local domain="$3"
+    local comment="mannn-${user}-$(mannn_hash12 "$domain")-${port}"
+
+    iptables -D INPUT -p tcp --dport "$port" ! -i lo -m comment --comment "$comment" -j DROP 2>/dev/null || true
+    iptables -D INPUT -p tcp --dport "$port" ! -s 127.0.0.1 -m comment --comment "$comment" -j DROP 2>/dev/null || true
+}
