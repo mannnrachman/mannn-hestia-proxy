@@ -154,6 +154,21 @@ All proxy configs pass these headers to the backend app:
 
 Timeouts: connect/send/read all set to 60s.
 
+## Security Headers
+
+All templates include these response headers applied at the nginx layer:
+
+| Header | Value | Scope |
+|--------|-------|-------|
+| `X-Frame-Options` | `SAMEORIGIN` | All templates |
+| `X-Content-Type-Options` | `nosniff` | All templates |
+| `X-XSS-Protection` | `1; mode=block` | All templates |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | All templates |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; frame-ancestors 'none';` | All templates |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` | All templates |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | SSL templates only |
+| `proxy_hide_header` | `X-Powered-By` | All templates — prevents backend technology disclosure (e.g. `PHP/8.x.x`) |
+
 ## Re-applying Template
 
 When you re-apply a template (`v-change-web-domain-tpl`):

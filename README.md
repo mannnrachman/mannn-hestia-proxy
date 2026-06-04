@@ -32,7 +32,8 @@ Security hardening in this version:
 - systemd service names use a collision-safe hash
 - Docker backends stay external to the template
 - Docker mode is proxy-only for CI/CD, Compose, and admin-managed stacks
-- **nginx security headers** (`X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`)
+- **nginx security headers** (`X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Content-Security-Policy`, `Permissions-Policy`, `Strict-Transport-Security` on SSL)
+- **`proxy_hide_header X-Powered-By`** prevents backend technology disclosure
 - **`/private/` path blocked** in nginx (returns 404)
 - **iptables firewall** auto-restricts app ports to localhost only (`! -i lo`)
 - **systemd sandbox** (`ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges`, `PrivateTmp`)
@@ -490,7 +491,9 @@ If an invalid or blocked port is requested, the template falls back to its safe 
 | Layer | Protection |
 |-------|-----------|
 | **iptables firewall** | App ports auto-restricted to localhost only (`! -i lo` DROP rule). External access blocked. |
-| **nginx security headers** | `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin` |
+| **nginx security headers** | `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, `Content-Security-Policy`, `Permissions-Policy` |
+| **nginx SSL headers** | `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` (SSL templates only) |
+| **nginx header hiding** | `proxy_hide_header X-Powered-By` — prevents backend technology fingerprinting |
 | **nginx path protection** | `/private/` returns 404, dotfiles (`.env`, `.git`) blocked |
 | **systemd sandbox** | `ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges=true`, `PrivateTmp=true`, `ReadWritePaths` limited to app directory |
 | **symlink protection** | `mannn_abort_if_symlink()` prevents symlink attacks on config files |
