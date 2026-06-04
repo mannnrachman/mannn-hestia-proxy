@@ -95,6 +95,25 @@ sudo ./install.sh        # Install
 sudo ./uninstall.sh      # Remove
 ```
 
+### Update Templates
+
+Already installed an older version? Update to the latest:
+
+```bash
+cd ~/mannn-hestia-proxy
+git pull
+sudo ./install.sh all
+```
+
+Then rebuild domains using these templates so the new config takes effect:
+
+```bash
+sudo /usr/local/hestia/bin/v-rebuild-web-domains admin
+```
+
+> **Safe:** The install script only overwrites nginx template files on the system.
+> It does **not** delete your `.env`, application code, or data.
+
 ### Step 3: Create Domain
 
 ```bash
