@@ -34,6 +34,11 @@ Security hardening in this version:
 - Docker mode is proxy-only for CI/CD, Compose, and admin-managed stacks
 - **nginx security headers** (`X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Content-Security-Policy`, `Permissions-Policy`, `Strict-Transport-Security` on SSL)
 - **`proxy_hide_header X-Powered-By`** prevents backend technology disclosure
+- **`server_tokens off`** hides nginx version from response headers
+- **sensitive file blocking** — `.bak`, `.sql`, `.zip`, `.log`, etc. return 404 at nginx level
+- **config path blocking** — `wp-config.php`, `config.php`, `settings.php`, etc. return 404 at nginx level
+- **rate limiting** — 10 req/s per IP (burst 20) via `mannn-rate-limit.conf`
+- **`client_max_body_size 10m`** — explicit upload size limit
 - **`/private/` path blocked** in nginx (returns 404)
 - **iptables firewall** auto-restricts app ports to localhost only (`! -i lo`)
 - **systemd sandbox** (`ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges`, `PrivateTmp`)
@@ -384,7 +389,8 @@ mannn-hestia-proxy/
 │   └── troubleshooting.md  ← common issues and fixes per template
 └── templates/
     ├── common/
-    │   └── mannn-security.sh
+    │   ├── mannn-security.sh
+    │   └── mannn-rate-limit.conf
     ├── nodejs/
     │   ├── mannn-nodejs-proxy.tpl
     │   ├── mannn-nodejs-proxy.stpl
@@ -513,7 +519,10 @@ If an invalid or blocked port is requested, the template falls back to its safe 
 | **nginx security headers** | `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, `Content-Security-Policy`, `Permissions-Policy` |
 | **nginx SSL headers** | `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` (SSL templates only) |
 | **nginx header hiding** | `proxy_hide_header X-Powered-By` — prevents backend technology fingerprinting |
-| **nginx path protection** | `/private/` returns 404, dotfiles (`.env`, `.git`) blocked |
+| **nginx path protection** | `/private/` returns 404, dotfiles (`.env`, `.git`) blocked, sensitive extensions (`.bak`, `.sql`, `.zip`, `.log`, etc.) blocked, config paths (`wp-config.php`, `config.php`, etc.) blocked |
+| **nginx rate limiting** | 10 req/s per IP (burst 20) via `limit_req_zone` — mitigates brute-force and automated scanning |
+| **nginx version hiding** | `server_tokens off` — prevents nginx version disclosure |
+| **upload size limit** | `client_max_body_size 10m` — explicit body size limit |
 | **systemd sandbox** | `ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges=true`, `PrivateTmp=true`, `ReadWritePaths` limited to app directory |
 | **symlink protection** | `mannn_abort_if_symlink()` prevents symlink attacks on config files |
 | **port validation** | `MANNN_BLOCKED_PORTS` blocks sensitive system ports, per-runtime range enforcement |

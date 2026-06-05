@@ -169,6 +169,52 @@ All templates include these response headers applied at the nginx layer:
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | SSL templates only |
 | `proxy_hide_header` | `X-Powered-By` | All templates — prevents backend technology disclosure (e.g. `PHP/8.x.x`) |
 
+## Sensitive File Blocking
+
+All templates include location blocks that return 404 at the nginx layer, before the request reaches the backend:
+
+```nginx
+# Block sensitive file extensions
+location ~* \.(bak|backup|old|orig|save|swp|tmp|sql|zip|tar|gz|rar|log)(\.gz)?$ {
+    return 404;
+}
+
+# Block common config file paths
+location ~* ^/(wp-config\.php|config\.php|settings\.php|database\.yml|appsettings\.json)$ {
+    return 404;
+}
+```
+
+This prevents:
+- **Soft 404 attacks** — backends that return 200 for all paths (catch-all/SPA handlers) no longer expose sensitive file paths
+- **Automated scanning** — tools scanning for `wp-config.php.bak`, `.env.backup`, etc. get proper 404 responses
+- **Information leakage** — backup files, database dumps, log files are blocked at the edge
+
+## Rate Limiting
+
+A shared rate limit zone is deployed to `/etc/nginx/conf.d/mannn-rate-limit.conf`:
+
+```nginx
+limit_req_zone $binary_remote_addr zone=mannn:10m rate=10r/s;
+```
+
+All templates reference this zone:
+
+```nginx
+limit_req zone=mannn burst=20 nodelay;
+```
+
+- **10 MB shared memory** — tracks ~160k unique IPs
+- **10 requests/second** per IP with burst allowance of 20
+- **`nodelay`** — processes burst immediately, rejecting excess
+
+## Additional Hardening
+
+| Directive | Value | Purpose |
+|-----------|-------|---------|
+| `server_tokens` | `off` | Hides nginx version from `Server:` header and error pages |
+| `client_max_body_size` | `10m` | Limits request body to 10MB — prevents oversized uploads |
+
 ## Re-applying Template
 
 When you re-apply a template (`v-change-web-domain-tpl`):

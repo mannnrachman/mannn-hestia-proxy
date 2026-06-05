@@ -183,6 +183,13 @@ if [ $ALL_SELECTED -eq 1 ]; then
         rm "$SEC_FILE"
         echo "  Removed mannn-security.sh"
     fi
+    # Remove rate limiting config
+    RL_FILE="/etc/nginx/conf.d/mannn-rate-limit.conf"
+    if [ -f "$RL_FILE" ]; then
+        rm "$RL_FILE"
+        nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
+        echo "  Removed mannn-rate-limit.conf"
+    fi
 else
     echo "  mannn-security.sh — kept (some templates still installed)"
 fi

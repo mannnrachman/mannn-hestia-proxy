@@ -198,9 +198,18 @@ for key in "${INSTALLED[@]}"; do
     echo "    ${TPL_FILE[$key]} — ${TPL_LABEL[$key]}"
 done
 echo ""
+echo "Deploying rate limiting config..."
+cp "$SCRIPT_DIR/templates/common/mannn-rate-limit.conf" /etc/nginx/conf.d/mannn-rate-limit.conf
+chmod 644 /etc/nginx/conf.d/mannn-rate-limit.conf
+nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
+echo "  mannn-rate-limit.conf → /etc/nginx/conf.d/ ✓"
+
+echo ""
 echo "Security hardening enabled:"
 echo "  - localhost proxy ports restricted per runtime"
 echo "  - service/container names are collision-safe"
+echo "  - sensitive file extensions blocked at nginx level"
+echo "  - rate limiting: 10 req/s per IP (burst 20)"
 if [ "${TPL_SELECTED[docker]}" -eq 1 ]; then
     echo "  - Docker template is proxy-only: nginx -> 127.0.0.1:BACKEND_PORT"
 fi
