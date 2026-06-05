@@ -382,6 +382,9 @@ mannn-hestia-proxy/
 ├── uninstall.sh            ← remove templates from HestiaCP
 ├── setup-backup-exclusions.sh ← exclude heavy dirs from backups
 ├── README.md
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── LICENSE
 ├── docs/
 │   ├── prerequisites.md    ← server setup, all runtime installations
 │   ├── architecture.md     ← how templates work internally
@@ -492,7 +495,11 @@ v-change-web-domain-tpl myuser myapp.example.com mannn-nodejs-proxy
 
 ## License
 
-MIT
+[MIT](LICENSE) — free to use, modify, and distribute.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on bug reports, feature requests, and pull requests.
 
 
 ## Security Notes
