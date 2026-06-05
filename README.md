@@ -2,6 +2,21 @@
 
 Dynamic Nginx reverse proxy templates for **HestiaCP** — run Node.js, Go, Python, FrankenPHP, or Docker / Compose backends behind Nginx with per-domain port configuration.
 
+## Why This Project?
+
+[HestiaCP](https://hestiacp.com/) is a lightweight, open-source web hosting control panel designed for managing websites, DNS, mail, and databases on Linux servers. It provides a clean web UI and powerful CLI tools for server administration. HestiaCP is actively maintained on [GitHub](https://github.com/hestiacp/hestiacp) and supports nginx + PHP-FPM as its primary web stack.
+
+**The problem:** HestiaCP is built around PHP-FPM — it natively serves PHP files from `public_html/` with no built-in support for running Node.js, Go, Python, or other backend runtimes. If you want to host a Go API, a Node.js app, or a Python service alongside your PHP sites, you're on your own — manual systemd services, hand-written nginx proxy configs, port management, and no integration with HestiaCP's domain/user model.
+
+**mannn-hestia-proxy fills that gap.** It provides drop-in Nginx proxy templates that integrate with HestiaCP's template system, so you can:
+
+- Apply a proxy template to any domain from the HestiaCP panel (or CLI)
+- Automatically create systemd services, nginx proxy configs, and firewall rules
+- Run multiple backends (Node.js, Go, Python, FrankenPHP, Docker) on the same server, each under its own domain and user
+- Manage everything through HestiaCP's existing domain model — no extra control panel needed
+
+> **TL;DR:** HestiaCP = great for PHP. This project = makes HestiaCP great for everything else too.
+
 ## Overview
 
 | Before (PHP-FPM) | After (mannn-hestia-proxy) |
