@@ -35,6 +35,7 @@ Dynamic Nginx reverse proxy templates for **HestiaCP** — run Node.js, Go, Pyth
 | `mannn-python-proxy` | Python | `private/python/` | 8100 | systemd → `python3 app.py` |
 | `mannn-frankenphpoctane-proxy` | PHP / Laravel | `private/php/` | 7100 | systemd → `frankenphp php-server` or `php artisan octane:start` |
 | `mannn-docker-proxy` | Docker / Compose | `private/docker/` | 9100 | Advanced mode: nginx proxy only to an existing localhost backend |
+| `mannn-laravel` | Laravel (PHP-FPM) | `public_html/` | — | HestiaCP PHP-FPM; fixes nginx 404 on dynamic image routes (e.g. `/photo/{file}.jpg` S3 proxy) |
 
 All templates share the same pattern:
 ```
@@ -157,6 +158,9 @@ v-change-web-domain-tpl myuser myapp.example.com mannn-frankenphpoctane-proxy
 
 # Docker / Compose
 v-change-web-domain-tpl myuser myapp.example.com mannn-docker-proxy
+
+# Laravel (PHP-FPM) — fixes dynamic image routes served via the app
+v-change-web-domain-tpl myuser myapp.example.com mannn-laravel
 ```
 
 ### Step 5: Upload Your App Code
@@ -425,6 +429,10 @@ mannn-hestia-proxy/
     │   ├── mannn-frankenphpoctane-proxy.tpl
     │   ├── mannn-frankenphpoctane-proxy.stpl
     │   └── mannn-frankenphpoctane-proxy.sh
+    └── laravel/
+        ├── mannn-laravel.tpl
+        ├── mannn-laravel.stpl
+        └── mannn-laravel.sh
     └── docker/
         ├── mannn-docker-proxy.tpl
         ├── mannn-docker-proxy.stpl

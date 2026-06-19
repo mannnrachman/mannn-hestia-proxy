@@ -31,6 +31,7 @@ TEMPLATES=(
     "frankenphp|mannn-frankenphpoctane-proxy|FrankenPHP / Laravel Octane (7100-7999)"
     "pypyroxy|mannn-python-proxy|Python proxy (8100-8999)"
     "docker|mannn-docker-proxy|Docker / Compose backend proxy only (9100-9999)"
+    "laravel|mannn-laravel|Laravel PHP-FPM (dynamic image route fix)"
 )
 
 # Build lookup arrays
@@ -45,7 +46,7 @@ for entry in "${TEMPLATES[@]}"; do
     TPL_SELECTED[$key]=1
 done
 
-ALL_KEYS=(nodejs goproxy frankenphp pypyroxy docker)
+ALL_KEYS=(nodejs goproxy frankenphp pypyroxy docker laravel)
 
 # --- Mode 1: CLI arguments ---
 if [ $# -gt 0 ]; then
