@@ -154,6 +154,31 @@ echo "WARNING: switch domains back to a PHP template before removing services:"
 echo "  v-change-web-domain-tpl user domain default"
 echo ""
 
+# Refuse to remove templates that domains still reference: HestiaCP rebuilds
+# render the domain nginx conf from the template file, so removing one in use
+# breaks nginx -t on the next rebuild/apply of that domain. Override with
+# MANNN_FORCE_UNINSTALL=1 (domains will need v-change-web-domain-tpl anyway).
+if [ "${MANNN_FORCE_UNINSTALL:-0}" != "1" ]; then
+    USERS_DATA="/usr/local/hestia/data/users"
+    BUSY=0
+    for key in "${ALL_KEYS[@]}"; do
+        [ "${TPL_SELECTED[$key]}" -ne 1 ] && continue
+        NAME="${TPL_FILE[$key]}"
+        DOMAINS="$(grep -h "TPL='$NAME'" "$USERS_DATA"/*/web.conf 2>/dev/null \
+            | sed -n "s/^DOMAIN='\([^']*\)'.*/\1/p" || true)"
+        if [ -n "$DOMAINS" ]; then
+            BUSY=1
+            echo "ERROR: template $NAME is still used by domain(s):" >&2
+            echo "$DOMAINS" | sed 's/^/  - /' >&2
+            echo "Switch them first: v-change-web-domain-tpl <user> <domain> default" >&2
+        fi
+    done
+    if [ "$BUSY" -eq 1 ]; then
+        echo "Refusing to uninstall (set MANNN_FORCE_UNINSTALL=1 to override)." >&2
+        exit 1
+    fi
+fi
+
 # Load security helper (if present) before removing template files, so a full
 # uninstall can flush firewall rules and the port registry.
 SEC_FILE="$TPL_DIR/mannn-security.sh"
