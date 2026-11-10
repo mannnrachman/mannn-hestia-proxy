@@ -199,18 +199,28 @@ for key in "${INSTALLED[@]}"; do
     echo "    ${TPL_FILE[$key]} — ${TPL_LABEL[$key]}"
 done
 echo ""
-echo "Deploying rate limiting config..."
+echo "Deploying nginx conf files..."
 cp "$SCRIPT_DIR/templates/common/mannn-rate-limit.conf" /etc/nginx/conf.d/mannn-rate-limit.conf
 chmod 644 /etc/nginx/conf.d/mannn-rate-limit.conf
-nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
 echo "  mannn-rate-limit.conf → /etc/nginx/conf.d/ ✓"
+cp "$SCRIPT_DIR/templates/common/mannn-upgrade-map.conf" /etc/nginx/conf.d/mannn-upgrade-map.conf
+chmod 644 /etc/nginx/conf.d/mannn-upgrade-map.conf
+echo "  mannn-upgrade-map.conf → /etc/nginx/conf.d/ ✓"
+if nginx -t >/dev/null 2>&1; then
+    systemctl reload nginx >/dev/null 2>&1 || echo "  WARNING: nginx reload failed — check systemctl status nginx" >&2
+else
+    echo "  ERROR: nginx -t failed after installing mannn conf files — nginx NOT reloaded. Run 'nginx -t' to inspect." >&2
+    exit 1
+fi
 
 echo ""
 echo "Security hardening enabled:"
 echo "  - localhost proxy ports restricted per runtime"
+echo "  - port-collision registry prevents two domains sharing one runtime port"
 echo "  - service/container names are collision-safe"
 echo "  - sensitive file extensions blocked at nginx level"
 echo "  - rate limiting: 10 req/s per IP (burst 20)"
+echo "  - websocket upgrade map for correct Connection header handling"
 if [ "${TPL_SELECTED[docker]}" -eq 1 ]; then
     echo "  - Docker template is proxy-only: nginx -> 127.0.0.1:BACKEND_PORT"
 fi

@@ -91,19 +91,41 @@ v-change-web-domain-tpl {user} {domain} mannn-proxy-{runtime}
 
 ## Port Already in Use
 
-**Cause**: Another process using the same port.
+**Cause**: Another process — or another domain's mannn service — using the same port.
+
+Ports are tracked in the port registry (`/usr/local/hestia/data/mannn-ports/<port>`,
+file content = owning service unit). If the port is already registered to a different
+domain, applying the template:
+
+- writes a temporary **503 stub config** for the domain (visitors see 503, never the other
+  domain's app)
+- does **not** start the service
+- errors with instructions to change `PORT` in `.env` and re-apply
 
 ```bash
-# Find what's using the port
-ss -tlnp | grep :3100
+# Check who owns the port in the registry
+cat /usr/local/hestia/data/mannn-ports/3100
 
-# Option A: Change .env to use a different port
+# Option A: Change .env to a free port in the allowed range, then re-apply
 echo "PORT=3105" > /home/{user}/web/{domain}/private/nodejs/.env
 v-change-web-domain-tpl {user} {domain} mannn-nodejs-proxy
 
-# Option B: Stop the conflicting service
+# Option B: Stop/remove the other domain's service so the port frees up
 systemctl stop mannn-other-domain
+
+# Option C: an unrelated process holds the port
+ss -tlnp | grep :3100
 ```
+
+## 503 Service Unavailable
+
+If a domain shows 503 immediately after applying a template, nginx is serving the
+**temporary 503 stub config** — this means the template apply failed the port registry
+check (port taken by another domain). Fix: pick a free port in `.env` and re-apply the
+template (see *Port Already in Use* above). Once the apply succeeds, the real proxy config
+replaces the stub.
+
+> Note: rate limiting no longer returns 503 — rate-limited requests get HTTP 429.
 
 ## Template Not Appearing in Panel
 
@@ -198,23 +220,25 @@ v-change-web-domain-tpl {user} {domain} mannn-python-proxy
 
 ## WebSocket Not Working
 
-The proxy config already includes WebSocket support headers:
+The proxy config includes WebSocket support via the shared upgrade map
+(`/etc/nginx/conf.d/mannn-upgrade-map.conf`):
 ```
 proxy_set_header Upgrade $http_upgrade;
-proxy_set_header Connection "upgrade";
+proxy_set_header Connection $connection_upgrade;
 ```
 
-If WebSocket connections time out, increase the timeouts in the generated config:
+`Connection: upgrade` is sent only for real upgrade requests; `proxy_read_timeout` is
+3600s by default, so idle WebSocket connections survive without manual tuning.
+
+If connections still drop, verify the map file exists and nginx was reloaded:
 
 ```bash
-# Edit the proxy config directly
-nano /home/{user}/conf/web/{domain}/nginx.proxy.conf
-
-# Change timeouts:
-# proxy_read_timeout 3600s;  (for long-lived connections)
+cat /etc/nginx/conf.d/mannn-upgrade-map.conf
+nginx -t && systemctl reload nginx
 ```
 
-Note: this file is regenerated on template re-apply, so changes will be lost.
+Note: the generated proxy config is regenerated on template re-apply, so manual edits to
+it will be lost.
 
 ## FrankenPHP Not Starting
 

@@ -64,11 +64,17 @@ Receives 5 positional arguments:
 1. Create app directory        → mkdir -p, chown, chmod
 2. Create default .env         → runtime-specific safe default port
 3. Create placeholder code     → server.js / main.go / app.py (if not exists)
-4. Go: auto-compile            → go build -o server (if main.go exists)
+4. Go: auto-compile            → runuser as domain user (go build -o server)
 5. Validate PORT from .env     → allow only runtime-specific safe port range
-6. Generate nginx proxy config → nginx.proxy.conf + nginx.proxy.ssl.conf
-7. Create unique systemd service → /etc/systemd/system/mannn-{user}-{hash}.service
-8. Enable + start service      → systemctl enable + start (or restart)
+6. Register port               → port registry acquire/migrate (release old port + iptables rule)
+7. Generate nginx proxy config → nginx.proxy.conf + nginx.proxy.ssl.conf
+8. Create unique systemd service → /etc/systemd/system/mannn-{user}-{hash}.service
+9. Enable + start service      → systemctl enable + start (or restart)
+10. Restrict port in iptables  → DROP ! -i lo rule tagged mannn-<user>-<domainhash>-<port>
+
+If the requested PORT is already registered to a different service unit, the script writes
+a 503 stub config for the domain, does not start the service, and exits with an error
+telling the user to change PORT in .env and re-apply.
 
 Docker backend mode is the exception: it only writes nginx proxy files from `BACKEND_PORT` and does not create a Docker service.
 ```
@@ -122,7 +128,8 @@ Example for user `myuser` and `api.example.com` → `mannn-myuser-a1b2c3d4e5f6.s
 ```ini
 [Unit]
 Description=Node.js app for api.example.com
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -131,6 +138,7 @@ Group=myuser
 WorkingDirectory=/home/myuser/web/api.example.com/private/nodejs
 ExecStart=/usr/local/node/bin/node server.js
 Restart=on-failure
+TimeoutStopSec=20
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=3100
@@ -149,10 +157,27 @@ All proxy configs pass these headers to the backend app:
 | `X-Real-IP` | `$remote_addr` | Client's real IP |
 | `X-Forwarded-For` | `$proxy_add_x_forwarded_for` | Proxy chain IPs |
 | `X-Forwarded-Proto` | `$scheme` / `https` | Original protocol |
+| `X-Forwarded-Host` | `$host` | Original host requested by the client |
+| `X-Forwarded-Port` | `$server_port` | Original port requested by the client |
 | `Upgrade` | `$http_upgrade` | WebSocket support |
-| `Connection` | `"upgrade"` | WebSocket support |
+| `Connection` | `$connection_upgrade` | WebSocket support via shared upgrade map |
 
-Timeouts: connect/send/read all set to 60s.
+The `Connection` header uses `$connection_upgrade`, defined by a shared map deployed to
+`/etc/nginx/conf.d/mannn-upgrade-map.conf`:
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ""      close;
+}
+```
+
+This sends `Connection: upgrade` only for real upgrade requests and `close` otherwise
+(previously hardcoded `"upgrade"` on every request).
+
+Timeouts: connect/send stay 60s; `proxy_read_timeout` is 3600s so idle WebSocket
+connections survive, and `proxy_buffering` is off so SSE/streaming responses are not
+buffered.
 
 ## Security Headers
 
@@ -162,12 +187,14 @@ All templates include these response headers applied at the nginx layer:
 |--------|-------|-------|
 | `X-Frame-Options` | `SAMEORIGIN` | All templates |
 | `X-Content-Type-Options` | `nosniff` | All templates |
-| `X-XSS-Protection` | `1; mode=block` | All templates |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | All templates |
-| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; frame-ancestors 'none';` | All templates |
+| `Content-Security-Policy-Report-Only` | `frame-ancestors 'none'; base-uri 'self'; object-src 'none'` | All templates — report-only so apps can set their own enforcing CSP without double-policy breakage |
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` | All templates |
-| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | SSL templates only |
 | `proxy_hide_header` | `X-Powered-By` | All templates — prevents backend technology disclosure (e.g. `PHP/8.x.x`) |
+
+Removed in this version: the legacy XSS auditor header (obsolete and harmful on old
+browsers) and the hardcoded `Strict-Transport-Security` — HSTS is now solely managed via
+the HestiaCP panel (`nginx.hsts.conf` include), avoiding duplicate STS headers.
 
 ## Sensitive File Blocking
 
@@ -205,8 +232,9 @@ limit_req zone=mannn burst=20 nodelay;
 ```
 
 - **10 MB shared memory** — tracks ~160k unique IPs
-- **10 requests/second** per IP with burst allowance of 20
+- **10 requests/second** per IP with burst allowance of 20 (rate unchanged)
 - **`nodelay`** — processes burst immediately, rejecting excess
+- **HTTP 429** — rejected requests now return 429 (Too Many Requests) instead of the default 503
 
 ## Additional Hardening
 
@@ -214,6 +242,27 @@ limit_req zone=mannn burst=20 nodelay;
 |-----------|-------|---------|
 | `server_tokens` | `off` | Hides nginx version from `Server:` header and error pages |
 | `client_max_body_size` | `10m` | Limits request body to 10MB — prevents oversized uploads |
+
+
+## TLS (SSL templates)
+
+- `http2 on;` directive instead of the deprecated `listen ... http2` flag (nginx ≥ 1.25.1)
+- OCSP stapling removed — Let's Encrypt ends OCSP support in 2025; matches upstream HestiaCP
+- TLS 1.3 0-RTT anti-replay handling (`$anti_replay`) like upstream HestiaCP templates
+- `/vstats/` location restored so domain statistics keep working
+
+## Port Registry
+
+Every used port is registered in `/usr/local/hestia/data/mannn-ports/<port>`; the file
+content is the owning systemd service unit name.
+
+- Acquiring a port already registered to a **different** unit fails (previously two domains
+  of the same runtime could silently share a port, routing both to one app)
+- The failed domain gets a temporary 503 stub config, its service is not started, and the
+  error instructs the user to change `PORT` in `.env` and re-apply
+- Changing `PORT` migrates the registry entry and removes the old iptables rule
+- Full uninstall releases every registry entry, flushes every `mannn-*` iptables rule, and
+  stops every `mannn-*` systemd service
 
 ## Re-applying Template
 
@@ -236,6 +285,9 @@ All runtime templates source a shared helper file `mannn-security.sh` during ins
 - collision-safe service/container naming based on `user + sha256(domain)`
 - blocked-port enforcement for control-plane and common infrastructure ports
 - per-runtime localhost port allowlists
+- the port registry (acquire/migrate/release) that prevents two domains from sharing a port
+- iptables port restriction — DROP `! -i lo` rules commented `mannn-<user>-<domainhash>-<port>`, auto-removed on port change and uninstall
+- Go compilation as the domain user via `runuser` (HOME set to the app dir, build cache under `private/go/.cache`) — root never compiles user-supplied code
 - basic symlink rejection before root writes files
 
 ### Docker hardening

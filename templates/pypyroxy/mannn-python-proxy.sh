@@ -5,9 +5,13 @@
 
 user="$1"
 domain="$2"
+# shellcheck disable=SC2034  # $3=ip, $5=docroot: HestiaCP always passes 5 args; unused by proxy templates
 ip="$3"
 home="$4"
+# shellcheck disable=SC2034
 docroot="$5"
+
+set -eo pipefail
 
 . "/usr/local/hestia/data/templates/web/nginx/php-fpm/mannn-security.sh"
 
@@ -32,8 +36,8 @@ mannn_abort_if_symlink "$SVC_FILE"
 if [ ! -f "$ENV_FILE" ]; then
     echo "PORT=$DEFAULT_PORT" > "$ENV_FILE"
 fi
-chown "$user:$user" "$ENV_FILE" 2>/dev/null
-chmod 600 "$ENV_FILE"
+chown "$user:$user" "$ENV_FILE" 2>/dev/null || true
+chmod 600 "$ENV_FILE" 2>/dev/null || true
 
 if [ ! -f "$APP_DIR/app.py" ] && [ ! -f "$APP_DIR/main.py" ] && [ ! -f "$APP_DIR/wsgi.py" ] && [ ! -f "$APP_DIR/server.py" ]; then
     cat > "$APP_DIR/app.py" << 'PYEOF'
@@ -96,47 +100,26 @@ fi
 REQUESTED_PORT=$(mannn_read_env_value PORT "$ENV_FILE")
 PORT=$(mannn_resolve_port "$REQUESTED_PORT" "$DEFAULT_PORT" "$PORT_MIN" "$PORT_MAX")
 
+if ! mannn_port_migrate "$PORT" "$SVC_NAME"; then
+    mannn_write_disabled_confs "$PROXY_CONF" "$PROXY_SSL_CONF"
+    chown "root:$user" "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null || true
+    chmod 640 "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null || true
+    systemctl stop "$SVC_NAME" >/dev/null 2>&1 || true
+    echo "mannn: port $PORT already used by another domain — set another PORT in $ENV_FILE and re-apply" >&2
+    exit 1
+fi
+
 rm -f "$PROXY_CONF" "$PROXY_SSL_CONF"
+mannn_write_proxy_confs "$PROXY_CONF" "$PROXY_SSL_CONF" "$PORT"
 
-cat > "$PROXY_CONF" << PROXYEOF
-location / {
-    proxy_pass http://127.0.0.1:$PORT;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade \$http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto \$scheme;
-    proxy_connect_timeout 60s;
-    proxy_send_timeout 60s;
-    proxy_read_timeout 60s;
-}
-PROXYEOF
-
-cat > "$PROXY_SSL_CONF" << PROXYEOF
-location / {
-    proxy_pass http://127.0.0.1:$PORT;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade \$http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_connect_timeout 60s;
-    proxy_send_timeout 60s;
-    proxy_read_timeout 60s;
-}
-PROXYEOF
-
-chown "root:$user" "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null
-chmod 640 "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null
+chown "root:$user" "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null || true
+chmod 640 "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null || true
 
 cat > "$SVC_FILE" << SVCEOF
 [Unit]
 Description=Python app for $domain
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -146,6 +129,7 @@ WorkingDirectory=$APP_DIR
 ExecStart=$PYTHON_BIN $ENTRY
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=20
 Environment=PORT=$PORT
 Environment=PYTHONUNBUFFERED=1
 
@@ -161,13 +145,10 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=multi-user.target
 SVCEOF
 
-
-# Restrict port to localhost only (firewall)
-mannn_restrict_port "$PORT" "$user" "$domain"
-systemctl daemon-reload >/dev/null 2>&1
+systemctl daemon-reload >/dev/null 2>&1 || true
 if systemctl is-active --quiet "$SVC_NAME" 2>/dev/null; then
-    systemctl restart "$SVC_NAME" >/dev/null 2>&1
+    systemctl restart "$SVC_NAME" >/dev/null 2>&1 || true
 else
-    systemctl enable "$SVC_NAME" >/dev/null 2>&1
-    systemctl start "$SVC_NAME" >/dev/null 2>&1
+    systemctl enable "$SVC_NAME" >/dev/null 2>&1 || true
+    systemctl start "$SVC_NAME" >/dev/null 2>&1 || true
 fi

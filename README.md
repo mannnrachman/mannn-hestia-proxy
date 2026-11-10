@@ -45,19 +45,25 @@ nginx (port 80/443) → proxy_pass to 127.0.0.1:{PORT} → your app
 Security hardening in this version:
 - each runtime only accepts a dedicated localhost port range
 - blocked internal/control-panel ports automatically fall back to a safe default
+- **port registry** (`/usr/local/hestia/data/mannn-ports/`) — two domains can never share a port; conflicts get a 503 stub instead of routing to the wrong app
 - systemd service names use a collision-safe hash
 - Docker backends stay external to the template
 - Docker mode is proxy-only for CI/CD, Compose, and admin-managed stacks
-- **nginx security headers** (`X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Content-Security-Policy`, `Permissions-Policy`, `Strict-Transport-Security` on SSL)
+- **nginx security headers** (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Content-Security-Policy-Report-Only`, `Permissions-Policy`)
+- **WebSocket map** (`/etc/nginx/conf.d/mannn-upgrade-map.conf`) — `Connection: upgrade` is sent only for real upgrade requests, `close` otherwise
+- **proxy forwarding headers** — `Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Port`
 - **`proxy_hide_header X-Powered-By`** prevents backend technology disclosure
 - **`server_tokens off`** hides nginx version from response headers
 - **sensitive file blocking** — `.bak`, `.sql`, `.zip`, `.log`, etc. return 404 at nginx level
 - **config path blocking** — `wp-config.php`, `config.php`, `settings.php`, etc. return 404 at nginx level
-- **rate limiting** — 10 req/s per IP (burst 20) via `mannn-rate-limit.conf`
+- **rate limiting** — 10 req/s per IP (burst 20) via `mannn-rate-limit.conf`; excess requests get HTTP 429
 - **`client_max_body_size 10m`** — explicit upload size limit
 - **`/private/` path blocked** in nginx (returns 404)
 - **iptables firewall** auto-restricts app ports to localhost only (`! -i lo`)
 - **systemd sandbox** (`ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges`, `PrivateTmp`)
+
+> **HSTS** is not set by the templates anymore — enable and configure it per domain in the
+> HestiaCP panel (the `nginx.hsts.conf` include), which avoids duplicate STS headers.
 
 ## Runtime Installation Model
 
@@ -258,6 +264,12 @@ EOF
 v-change-web-domain-tpl myuser myapp.example.com mannn-docker-proxy
 ```
 
+Ports are tracked in the **port registry** (`/usr/local/hestia/data/mannn-ports/<port>`,
+content = the owning systemd service unit). Changing `PORT` and re-applying automatically
+migrates the registry entry and removes the old iptables rule. If another domain already
+claimed the new port, the re-apply does not start the service, writes a temporary 503 stub
+config for the domain, and errors with instructions to change `PORT` in `.env` and re-apply.
+
 ## Manage Service
 
 Services and containers now use a **collision-safe generated name** based on `user + hash(domain)`. Example pattern:
@@ -277,6 +289,9 @@ ls /etc/systemd/system/mannn-*.service
 docker ps -a
 docker compose ps
 ```
+
+Units wait for the network to be up (`After=`/`Wants=network-online.target`) and stop
+cleanly within `TimeoutStopSec=20`.
 
 ## Directory Structure
 
@@ -392,6 +407,10 @@ All permissions match HestiaCP standard:
 **Permission denied**: Re-apply template to auto-fix: `v-change-web-domain-tpl user domain template`
 
 **Docker backend fails to start**: verify your app/container is running and `BACKEND_PORT=` in `.env` matches the localhost port, then re-apply the template if needed.
+
+
+**Port already registered to another domain**: the template writes a 503 stub config, does
+not start the service, and errors — change `PORT` in the domain's `.env` and re-apply.
 
 ## File Reference
 
@@ -545,12 +564,13 @@ If an invalid or blocked port is requested, the template falls back to its safe 
 
 | Layer | Protection |
 |-------|-----------|
-| **iptables firewall** | App ports auto-restricted to localhost only (`! -i lo` DROP rule). External access blocked. |
-| **nginx security headers** | `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, `Content-Security-Policy`, `Permissions-Policy` |
-| **nginx SSL headers** | `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` (SSL templates only) |
+| **iptables firewall** | App ports auto-restricted to localhost only (`! -i lo` DROP rule, tagged `mannn-<user>-<domainhash>-<port>`). External access blocked. Rules auto-removed on port change/uninstall. |
+| **port registry** | `/usr/local/hestia/data/mannn-ports/<port>` maps each port to its owning service unit — two domains can never share a port; conflicts get a 503 stub, not a cross-tenant leak |
+| **nginx security headers** | `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`; CSP is sent as `Content-Security-Policy-Report-Only` (`frame-ancestors 'none'; base-uri 'self'; object-src 'none'`) so apps can set their own enforcing CSP |
+| **HSTS** | Not set by templates — managed solely via the HestiaCP panel (`nginx.hsts.conf` include) to avoid duplicate STS headers |
 | **nginx header hiding** | `proxy_hide_header X-Powered-By` — prevents backend technology fingerprinting |
 | **nginx path protection** | `/private/` returns 404, dotfiles (`.env`, `.git`) blocked, sensitive extensions (`.bak`, `.sql`, `.zip`, `.log`, etc.) blocked, config paths (`wp-config.php`, `config.php`, etc.) blocked |
-| **nginx rate limiting** | 10 req/s per IP (burst 20) via `limit_req_zone` — mitigates brute-force and automated scanning |
+| **nginx rate limiting** | 10 req/s per IP (burst 20) via `limit_req_zone` — mitigates brute-force and automated scanning; excess requests get HTTP 429 |
 | **nginx version hiding** | `server_tokens off` — prevents nginx version disclosure |
 | **upload size limit** | `client_max_body_size 10m` — explicit body size limit |
 | **systemd sandbox** | `ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges=true`, `PrivateTmp=true`, `ReadWritePaths` limited to app directory |

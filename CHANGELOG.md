@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-11-10
+
+### Added
+
+- **Port registry** (`/usr/local/hestia/data/mannn-ports/<port>`) — two domains can no longer share a port (cross-tenant routing leak). Conflicting applies write a temporary 503 stub config, don't start the service, and error with instructions to change `PORT` in `.env`
+- **WebSocket upgrade map** deployed to `/etc/nginx/conf.d/mannn-upgrade-map.conf` — `Connection: upgrade` only for real upgrade requests, `close` otherwise
+- `X-Forwarded-Host` and `X-Forwarded-Port` proxy headers
+- CI: shellcheck + nginx template render test (`scripts/render-templates-test.sh` in GitHub Actions)
+
+### Changed
+
+- `proxy_read_timeout` raised to 3600s (idle WebSocket survival); connect/send stay 60s; `proxy_buffering off` (SSE/streaming)
+- Rate-limited requests now return **HTTP 429** (was 503); rate unchanged (10 req/s, burst 20)
+- `X-XSS-Protection` header removed (obsolete, harmful on old browsers)
+- CSP replaced by `Content-Security-Policy-Report-Only: frame-ancestors 'none'; base-uri 'self'; object-src 'none'` — apps can set their own enforcing CSP without double-policy breakage
+- Hardcoded HSTS removed — HSTS is solely managed via the HestiaCP panel (`nginx.hsts.conf` include), avoiding duplicate STS headers
+- TLS templates: `http2 on;` instead of deprecated `listen ... ssl http2` flag (nginx ≥ 1.25.1)
+- systemd units: `After=`/`Wants=network-online.target`, `TimeoutStopSec=20`
+- `go build` runs as the domain user via `runuser` (HOME=app dir, build cache under `private/go/.cache`) — root no longer compiles user-supplied code
+- iptables rules tagged `mannn-<unit>-<port>`; changing `PORT` auto-removes the old rule
+
+### Removed
+
+- `ssl_stapling` (Let's Encrypt ends OCSP support in 2025 — matches upstream HestiaCP)
+
+### Fixed
+
+- Two domains of the same runtime could pick the same port, routing both to one app
+- iptables rule leak on port change; uninstall now flushes every `mannn-*` rule, stops every `mannn-*` service, and removes the registry
+- Restored upstream HestiaCP TLS 1.3 0-RTT anti-replay handling (`$anti_replay`) and `/vstats/` location (domain statistics)
+- `uninstall.sh` now also removes the `laravel` template (was missing from the removal list)
+
 ## [1.2.0] - 2026-06-05
 
 ### Added
@@ -79,6 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `docs/deployment.md` — deployment workflows per runtime
   - `docs/troubleshooting.md` — error codes and fixes
 
+[1.3.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.3.0
 [1.2.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.2.0
 [1.1.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.1.0
 [1.0.1]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.0.1

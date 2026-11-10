@@ -10,6 +10,7 @@ server {
     server_tokens off;
     client_max_body_size 10m;
     limit_req zone=mannn burst=20 nodelay;
+    limit_req_status 429;
 
     location ~ /\.(?!well-known\/) { deny all; return 404; }
 
@@ -19,9 +20,8 @@ server {
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; frame-ancestors 'none';" always;
+    add_header Content-Security-Policy-Report-Only "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
     proxy_hide_header X-Powered-By;
 
@@ -37,6 +37,11 @@ server {
 
     include %home%/%user%/conf/web/%domain%/nginx.proxy.conf;
 
+    location /vstats/ {
+        alias   %home%/%user%/web/%domain%/stats/;
+        include %home%/%user%/web/%domain%/stats/auth.conf*;
+    }
+
     location /error/ {
         alias %home%/%user%/web/%domain%/document_errors/;
     }
@@ -45,4 +50,3 @@ server {
     include /etc/nginx/conf.d/phppgadmin.inc*;
     include %home%/%user%/conf/web/%domain%/nginx.conf_*;
 }
-

@@ -27,6 +27,7 @@ TEMPLATES=(
     "frankenphp|mannn-frankenphpoctane-proxy|FrankenPHP / Laravel Octane"
     "pypyroxy|mannn-python-proxy|Python proxy"
     "docker|mannn-docker-proxy|Docker / Compose backend proxy only"
+    "laravel|mannn-laravel|Laravel PHP-FPM (dynamic image route fix)"
 )
 
 declare -A TPL_LABEL
@@ -40,7 +41,7 @@ for entry in "${TEMPLATES[@]}"; do
     TPL_SELECTED[$key]=1
 done
 
-ALL_KEYS=(nodejs goproxy frankenphp pypyroxy docker)
+ALL_KEYS=(nodejs goproxy frankenphp pypyroxy docker laravel)
 
 # --- Mode 1: CLI arguments ---
 if [ $# -gt 0 ]; then
@@ -149,6 +150,20 @@ fi
 echo "Removing mannn-hestia-proxy templates..."
 echo ""
 
+echo "WARNING: switch domains back to a PHP template before removing services:"
+echo "  v-change-web-domain-tpl user domain default"
+echo ""
+
+# Load security helper (if present) before removing template files, so a full
+# uninstall can flush firewall rules and the port registry.
+SEC_FILE="$TPL_DIR/mannn-security.sh"
+HAVE_SEC=0
+if [ -f "$SEC_FILE" ]; then
+    # shellcheck source=/dev/null
+    source "$SEC_FILE"
+    HAVE_SEC=1
+fi
+
 REMOVED=0
 
 for key in "${ALL_KEYS[@]}"; do
@@ -178,17 +193,48 @@ for key in "${ALL_KEYS[@]}"; do
 done
 
 if [ $ALL_SELECTED -eq 1 ]; then
-    SEC_FILE="$TPL_DIR/mannn-security.sh"
+    # Stop, disable and remove every mannn-* systemd service
+    for unit_file in /etc/systemd/system/mannn-*.service; do
+        [ -e "$unit_file" ] || continue
+        unit="$(basename "$unit_file")"
+        systemctl stop "$unit" 2>/dev/null || true
+        systemctl disable "$unit" 2>/dev/null || true
+        rm -f "$unit_file"
+        echo "  Removed service $unit"
+    done
+    systemctl reset-failed 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+
+    # Flush mannn-* firewall rules and release the port registry
+    if [ $HAVE_SEC -eq 1 ]; then
+        mannn_unrestrict_all || true
+        mannn_port_release_all || true
+    else
+        echo "  WARNING: mannn-security.sh missing — manual cleanup may be needed:" >&2
+        echo "    iptables -S INPUT | grep 'mannn-'   # then remove matching rules with iptables -D" >&2
+    fi
+    rm -rf /usr/local/hestia/data/mannn-ports
+
     if [ -f "$SEC_FILE" ]; then
-        rm "$SEC_FILE"
+        rm -f "$SEC_FILE"
         echo "  Removed mannn-security.sh"
     fi
-    # Remove rate limiting config
-    RL_FILE="/etc/nginx/conf.d/mannn-rate-limit.conf"
-    if [ -f "$RL_FILE" ]; then
-        rm "$RL_FILE"
-        nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
-        echo "  Removed mannn-rate-limit.conf"
+    # Remove nginx conf files installed by install.sh
+    REMOVED_NGINX_CONF=0
+    for conf in /etc/nginx/conf.d/mannn-rate-limit.conf /etc/nginx/conf.d/mannn-upgrade-map.conf; do
+        if [ -f "$conf" ]; then
+            rm -f "$conf"
+            echo "  Removed $(basename "$conf")"
+            REMOVED_NGINX_CONF=1
+        fi
+    done
+    if [ $REMOVED_NGINX_CONF -eq 1 ]; then
+        if nginx -t >/dev/null 2>&1; then
+            systemctl reload nginx >/dev/null 2>&1 || echo "  WARNING: nginx reload failed — check systemctl status nginx" >&2
+        else
+            echo "  ERROR: nginx -t failed after removing mannn conf files — nginx NOT reloaded. Run 'nginx -t' to inspect." >&2
+            exit 1
+        fi
     fi
 else
     echo "  mannn-security.sh — kept (some templates still installed)"
@@ -202,12 +248,9 @@ fi
 
 echo "Templates removed."
 echo ""
-echo "NOTE: Systemd services (mannn-*) and app directories are NOT removed."
-echo "To clean up services manually:"
-echo "  systemctl stop mannn-{generated-name}"
-echo "  systemctl disable mannn-{generated-name}"
-echo "  rm /etc/systemd/system/mannn-{generated-name}.service"
-echo "  systemctl daemon-reload"
-echo ""
-echo "Switch domains back to a PHP template before removing services:"
-echo "  v-change-web-domain-tpl user domain default"
+if [ $ALL_SELECTED -eq 1 ]; then
+    echo "mannn-* services, firewall rules, and the port registry have been cleaned up."
+    echo "NOTE: app directories (web/<domain>/) are NOT removed."
+else
+    echo "NOTE: mannn-* services and firewall rules remain in place (partial uninstall)."
+fi

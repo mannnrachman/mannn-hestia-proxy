@@ -55,7 +55,7 @@ fi
 
 # --- Apply mode ---
 TMPFILE=$(mktemp)
-trap "rm -f $TMPFILE" EXIT
+trap 'rm -f "$TMPFILE"' EXIT
 
 # Excluded paths (relative to /home/$user/web/$domain/):
 # - private/nodejs/node_modules  → reinstall with npm install

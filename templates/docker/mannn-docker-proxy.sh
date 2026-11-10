@@ -5,9 +5,13 @@
 
 user="$1"
 domain="$2"
+# shellcheck disable=SC2034  # $3=ip, $5=docroot: HestiaCP always passes 5 args; unused by proxy templates
 ip="$3"
 home="$4"
+# shellcheck disable=SC2034
 docroot="$5"
+
+set -eo pipefail
 
 . "/usr/local/hestia/data/templates/web/nginx/php-fpm/mannn-security.sh"
 
@@ -36,51 +40,25 @@ if [ ! -f "$ENV_FILE" ]; then
 BACKEND_PORT=$DEFAULT_PORT
 ENVDEF
 fi
-chown "$user:$user" "$ENV_FILE" 2>/dev/null
-chmod 600 "$ENV_FILE"
+chown "$user:$user" "$ENV_FILE" 2>/dev/null || true
+chmod 600 "$ENV_FILE" 2>/dev/null || true
 
 REQUESTED_PORT=$(mannn_read_env_value BACKEND_PORT "$ENV_FILE")
 PORT=$(mannn_resolve_port "$REQUESTED_PORT" "$DEFAULT_PORT" "$PORT_MIN" "$PORT_MAX")
 
-# Restrict port to localhost only (firewall)
-mannn_restrict_port "$PORT" "$user" "$domain"
+if ! mannn_port_migrate "$PORT" "$SVC_NAME"; then
+    mannn_write_disabled_confs "$PROXY_CONF" "$PROXY_SSL_CONF"
+    chown "root:$user" "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null || true
+    chmod 640 "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null || true
+    echo "mannn: port $PORT already used by another domain — set another BACKEND_PORT in $ENV_FILE and re-apply" >&2
+    exit 1
+fi
 
 rm -f "$PROXY_CONF" "$PROXY_SSL_CONF"
+mannn_write_proxy_confs "$PROXY_CONF" "$PROXY_SSL_CONF" "$PORT"
 
-cat > "$PROXY_CONF" << PROXYEOF
-location / {
-    proxy_pass http://127.0.0.1:$PORT;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade \$http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto \$scheme;
-    proxy_connect_timeout 60s;
-    proxy_send_timeout 60s;
-    proxy_read_timeout 60s;
-}
-PROXYEOF
-
-cat > "$PROXY_SSL_CONF" << PROXYEOF
-location / {
-    proxy_pass http://127.0.0.1:$PORT;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade \$http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_connect_timeout 60s;
-    proxy_send_timeout 60s;
-    proxy_read_timeout 60s;
-}
-PROXYEOF
-
-chown "root:$user" "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null
-chmod 640 "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null
+chown "root:$user" "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null || true
+chmod 640 "$PROXY_CONF" "$PROXY_SSL_CONF" 2>/dev/null || true
 
 if [ -f "$SVC_FILE" ]; then
     systemctl stop "$SVC_NAME" >/dev/null 2>&1 || true
