@@ -17,9 +17,13 @@ jobs:
         run: |
           # warnings+errors only: info-level notes (SC2016 single-quote nginx
           # maps, SC1091 unfollowed source) are intentional in this repo.
-          shellcheck --severity=warning \
-            install.sh uninstall.sh setup-backup-exclusions.sh \
-            scripts/*.sh templates/*/*/*.sh
+          # templates/*/*.sh covers templates/common/mannn-security.sh and
+          # every templates/<runtime>/<name>.sh. The previous depth-4 glob
+          # (templates/*/*/*.sh) matched nothing, so shellcheck received the
+          # literal pattern and the job failed on every commit.
+          mapfile -t files < <(find . -path ./.git -prune -o -name '*.sh' -print | sort)
+          [ "${#files[@]}" -gt 0 ]
+          shellcheck --severity=warning "${files[@]}"
 
   render-test:
     runs-on: ubuntu-latest
