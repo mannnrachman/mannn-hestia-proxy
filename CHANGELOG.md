@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-11-10
+
+### Fixed
+
+- `install.sh`: an nginx reload that nginx itself rejects (e.g. changing the `limit_req` zone key — nginx keeps the old shared-memory zone and logs `[emerg]`, while systemd still reports the reload as successful) left the server silently running the OLD configuration. install.sh now detects a fresh `[emerg]` in the nginx error log after reload and recovers with a full `systemctl restart nginx` (drops open connections for ~1s), failing loudly if that also fails
+
 ## [1.4.1] - 2026-11-10
 
 ### Fixed
@@ -145,6 +151,7 @@ lifecycle, concurrency; systemd sandbox verified against all four runtimes).
   - `docs/deployment.md` — deployment workflows per runtime
   - `docs/troubleshooting.md` — error codes and fixes
 
+[1.4.2]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.2
 [1.4.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.0
 [1.4.1]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.1
 [1.3.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.3.0

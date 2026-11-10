@@ -207,7 +207,28 @@ cp "$SCRIPT_DIR/templates/common/mannn-upgrade-map.conf" /etc/nginx/conf.d/mannn
 chmod 644 /etc/nginx/conf.d/mannn-upgrade-map.conf
 echo "  mannn-upgrade-map.conf → /etc/nginx/conf.d/ ✓"
 if nginx -t >/dev/null 2>&1; then
-    systemctl reload nginx >/dev/null 2>&1 || echo "  WARNING: nginx reload failed — check systemctl status nginx" >&2
+    ERRLOG="/var/log/nginx/error.log"
+    PRE_LINES=0
+    [ -f "$ERRLOG" ] && PRE_LINES=$(wc -l < "$ERRLOG")
+    systemctl reload nginx >/dev/null 2>&1 || echo "  WARNING: nginx reload command failed — check systemctl status nginx" >&2
+    sleep 1
+    # A reload can fail AFTER systemd reports success: nginx keeps the old
+    # config when the new one cannot re-use runtime state (e.g. changing the
+    # limit_req zone key requires dropping the old shared-memory zone). Detect
+    # a fresh [emerg] in the error log and recover with a full restart.
+    NEWERR="$(tail -n "+$((PRE_LINES + 1))" "$ERRLOG" 2>/dev/null | grep -F '[emerg]' | tail -1 || true)"
+    if [ -n "$NEWERR" ]; then
+        echo "  nginx reload did NOT take effect:" >&2
+        echo "    $NEWERR" >&2
+        echo "  Performing a full nginx restart (drops open connections for ~1s)..." >&2
+        systemctl restart nginx || { echo "  ERROR: nginx restart failed — inspect journalctl -u nginx" >&2; exit 1; }
+        sleep 1
+        if ! systemctl is-active --quiet nginx; then
+            echo "  ERROR: nginx not running after restart — inspect journalctl -u nginx" >&2
+            exit 1
+        fi
+        echo "  nginx restarted, new configuration active ✓"
+    fi
 else
     echo "  ERROR: nginx -t failed after installing mannn conf files — nginx NOT reloaded. Run 'nginx -t' to inspect." >&2
     exit 1
