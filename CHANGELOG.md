@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] - 2026-11-10
+
+### Fixed
+
+- Go placeholder never compiled on module-mode Go (default since 1.16): `go build` in a directory with a bare `main.go` and no `go.mod` fails, leaving a fresh domain with a dead unit. The placeholder branch now also writes a minimal `go.mod` (user apps that ship their own `go.mod` are untouched). Found live during deployment: legacy placeholder dirs built before 1.3.0 still show `go: go.mod file not found` on re-apply but keep running their existing binary
+
 ## [1.4.2] - 2026-11-10
 
 ### Fixed
@@ -153,6 +159,7 @@ lifecycle, concurrency; systemd sandbox verified against all four runtimes).
 
 [1.4.2]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.2
 [1.4.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.0
+[1.4.3]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.3
 [1.4.1]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.1
 [1.3.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.3.0
 [1.2.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.2.0

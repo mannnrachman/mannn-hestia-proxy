@@ -89,6 +89,13 @@ func loadPort(defaultPort string) string {
 GOEOF
     chown "$user:$user" "$APP_DIR/main.go"
     chmod 644 "$APP_DIR/main.go"
+    # Module-mode Go (default since 1.16) refuses to build a bare main.go:
+    # ship a minimal go.mod with the placeholder or the first build fails.
+    if [ ! -f "$APP_DIR/go.mod" ]; then
+        printf 'module mannn-placeholder\n\ngo 1.21\n' > "$APP_DIR/go.mod"
+        chown "$user:$user" "$APP_DIR/go.mod"
+        chmod 644 "$APP_DIR/go.mod"
+    fi
 fi
 
 GO_BIN=$(command -v go 2>/dev/null || echo "/usr/local/go/bin/go")
