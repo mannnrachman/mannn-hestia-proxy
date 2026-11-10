@@ -56,11 +56,11 @@ Security hardening in this version:
 - **`server_tokens off`** hides nginx version from response headers
 - **sensitive file blocking** — `.bak`, `.sql`, `.zip`, `.log`, etc. return 404 at nginx level
 - **config path blocking** — `wp-config.php`, `config.php`, `settings.php`, etc. return 404 at nginx level
-- **rate limiting** — 10 req/s per IP (burst 20) via `mannn-rate-limit.conf`; excess requests get HTTP 429
+- **rate limiting** — 10 req/s per domain per IP (burst 20) via `mannn-rate-limit.conf`; excess requests get HTTP 429
 - **`client_max_body_size 10m`** — explicit upload size limit
 - **`/private/` path blocked** in nginx (returns 404)
-- **iptables firewall** auto-restricts app ports to localhost only (`! -i lo`)
-- **systemd sandbox** (`ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges`, `PrivateTmp`)
+- **firewall (IPv4 + IPv6)** — app ports auto-restricted to localhost via `iptables` **and** `ip6tables` (`! -i lo`); pre-1.3.0 legacy rules and duplicates are cleaned up on re-apply
+- **systemd sandbox** — `ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges`, `PrivateTmp`, `PrivateDevices`, `ProtectKernel*`, `ProtectProc=invisible`, `RestrictAddressFamilies`, `SystemCallFilter=@system-service`, `MemoryMax` per runtime; per-service overrides survive re-apply via a systemd drop-in
 
 > **HSTS** is not set by the templates anymore — enable and configure it per domain in the
 > HestiaCP panel (the `nginx.hsts.conf` include), which avoids duplicate STS headers.
@@ -564,16 +564,16 @@ If an invalid or blocked port is requested, the template falls back to its safe 
 
 | Layer | Protection |
 |-------|-----------|
-| **iptables firewall** | App ports auto-restricted to localhost only (`! -i lo` DROP rule, tagged `mannn-<user>-<domainhash>-<port>`). External access blocked. Rules auto-removed on port change/uninstall. |
+| **firewall (IPv4 + IPv6)** | App ports auto-restricted to localhost only via `iptables` **and** `ip6tables` (`! -i lo` DROP rule, tagged `mannn-<user>-<domainhash>-<port>`). External access blocked. Legacy (`! -s`) rules and duplicates from older versions are cleaned on re-apply. Rules auto-removed on port change/uninstall. |
 | **port registry** | `/usr/local/hestia/data/mannn-ports/<port>` maps each port to its owning service unit — two domains can never share a port; conflicts get a 503 stub, not a cross-tenant leak |
 | **nginx security headers** | `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`; CSP is sent as `Content-Security-Policy-Report-Only` (`frame-ancestors 'none'; base-uri 'self'; object-src 'none'`) so apps can set their own enforcing CSP |
 | **HSTS** | Not set by templates — managed solely via the HestiaCP panel (`nginx.hsts.conf` include) to avoid duplicate STS headers |
 | **nginx header hiding** | `proxy_hide_header X-Powered-By` — prevents backend technology fingerprinting |
 | **nginx path protection** | `/private/` returns 404, dotfiles (`.env`, `.git`) blocked, sensitive extensions (`.bak`, `.sql`, `.zip`, `.log`, etc.) blocked, config paths (`wp-config.php`, `config.php`, etc.) blocked |
-| **nginx rate limiting** | 10 req/s per IP (burst 20) via `limit_req_zone` — mitigates brute-force and automated scanning; excess requests get HTTP 429 |
+| **nginx rate limiting** | 10 req/s per domain per IP (burst 20) via `limit_req_zone $server_name$binary_remote_addr` — one busy domain no longer starves another for the same client (NAT); excess requests get HTTP 429 |
 | **nginx version hiding** | `server_tokens off` — prevents nginx version disclosure |
 | **upload size limit** | `client_max_body_size 10m` — explicit body size limit |
-| **systemd sandbox** | `ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges=true`, `PrivateTmp=true`, `ReadWritePaths` limited to app directory |
+| **systemd sandbox** | `ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges`, `PrivateTmp`, `PrivateDevices`, `ProtectClock/ControlGroups/Hostname/KernelLogs/KernelModules/KernelTunables`, `ProtectProc=invisible`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK`, `RestrictRealtime/SUIDSGID`, `SystemCallFilter=@system-service`, `SystemCallArchitectures=native`, `LockPersonality`, `UMask=0027`, `MemoryMax` (node 512M / go 256M / python 512M / frankenphp 1G), `ReadWritePaths` limited to app directory |
 | **symlink protection** | `mannn_abort_if_symlink()` prevents symlink attacks on config files |
 | **port validation** | `MANNN_BLOCKED_PORTS` blocks sensitive system ports, per-runtime range enforcement |
 | **user isolation** | Each app runs as its own system user, no shared privileges |

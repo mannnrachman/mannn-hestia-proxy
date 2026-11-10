@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-11-10
+
+Audit-driven hardening (empirically verified in containers: nginx behavior, firewall
+lifecycle, concurrency; systemd sandbox verified against all four runtimes).
+
+### Security
+
+- **IPv6 firewall coverage** — app ports are now restricted via `ip6tables` in addition to `iptables`; previously the DROP rule was IPv4-only, leaving backends directly reachable over IPv6 on dual-stack servers
+- **systemd sandbox expanded** (all runtime units): `PrivateDevices`, `ProtectClock`, `ProtectControlGroups`, `ProtectHostname`, `ProtectKernelLogs/Modules/Tunables`, `ProtectProc=invisible`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK`, `RestrictRealtime`, `RestrictSUIDSGID`, `SystemCallFilter=@system-service`, `SystemCallArchitectures=native`, `LockPersonality`, `UMask=0027`
+- **`MemoryMax` per runtime** (node 512M / go 256M / python 512M / frankenphp 1G) — runaway apps are OOM-killed instead of starving the server; override via a systemd drop-in (survives re-apply)
+- **Port registry hardened** — directory `700` / entries `600` (unit-name-to-port mapping no longer readable by local users), mutations serialized with `flock` so concurrent applies of the same domain cannot interleave
+- `MANNN_REQUIRE_FIREWALL=1` opt-in fail-closed mode for servers without iptables/ip6tables binaries (nftables-only hosts)
+- FrankenPHP placeholder no longer discloses the PHP version in its response
+
+### Fixed
+
+- **Rate-limit budget shared across domains** — zone key is now `$server_name$binary_remote_addr`; previously all domains shared one per-IP bucket, so a burst against domain A returned 429 for domain B to the same client (verified: 15/15 cross-domain requests 429 before fix, 200 after)
+- **Legacy firewall rules never cleaned** — pre-1.3.0 rules used `! -s 127.0.0.1/32` while cleanup only matched `! -i lo`; orphaned legacy rules (and their duplicates) now removed on re-apply/uninstall (verified in privileged container)
+- **Early-Data not forwarded to backends** — SSL proxy include now sends `Early-Data: $rfc_early_data` (RFC 8470), matching HestiaCP's own 0-RTT guidance; backends can reject non-idempotent TLS 1.3 0-RTT replays
+- Placeholder apps now prefer the service `PORT` environment variable over `.env` (editing `.env` + `systemctl restart` no longer silently changes the app port out from under nginx)
+- `uninstall.sh` refuses to remove templates still referenced by domains (would break `nginx -t` on the next rebuild); override with `MANNN_FORCE_UNINSTALL=1`
+- `mannn_unrestrict_all` could leave rules behind when more than 10 tagged rules existed (attempt cap raised to 200); now also covers IPv6
+
+### Unchanged (documented decisions)
+
+- No upstream keepalive pooling to app backends: `proxy_pass` to a literal address cannot use `upstream {}` keepalive from a server-context include, and the upgrade map's `Connection: close` for non-WS requests matches nginx's one-connection-per-request behavior
+- No HTTP/3/QUIC listeners: target is distro nginx on Debian/Ubuntu, which ships without `http_v3_module` (enabling `quic` would break `nginx -t` there)
+
 ## [1.3.0] - 2026-11-10
 
 ### Added
@@ -111,6 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `docs/deployment.md` — deployment workflows per runtime
   - `docs/troubleshooting.md` — error codes and fixes
 
+[1.4.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.0
 [1.3.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.3.0
 [1.2.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.2.0
 [1.1.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.1.0

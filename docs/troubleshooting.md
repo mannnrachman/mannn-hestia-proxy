@@ -302,3 +302,47 @@ ss -tlnp | grep 9100
 
 # If nothing is listening, start your compose or container stack separately.
 ```
+
+## Uninstall refused: "template is still used by domain(s)"
+
+`uninstall.sh` refuses to remove a template while any domain still references it — removing
+it would break `nginx -t` on that domain's next rebuild. Switch the domain first:
+
+```bash
+v-change-web-domain-tpl {user} {domain} default
+sudo ./uninstall.sh          # now succeeds
+```
+
+Override (domains will still need a template switch before their next rebuild):
+
+```bash
+sudo MANNN_FORCE_UNINSTALL=1 ./uninstall.sh all
+```
+
+## No iptables/ip6tables binary (nftables-only servers)
+
+The templates restrict app ports via `iptables`/`ip6tables`. On most distros these are
+nft-backed wrappers and work out of the box. On a server with neither binary, apply still
+succeeds but prints a WARNING and leaves the app port **unfirewalled** — nginx-level
+protections (rate limit, headers, path blocking) still apply, but the backend port is
+directly reachable on the network.
+
+Fail closed instead (apply gets the 503 stub and exits non-zero):
+
+```bash
+# per apply:
+sudo MANNN_REQUIRE_FIREWALL=1 v-change-web-domain-tpl {user} {domain} mannn-nodejs-proxy
+```
+
+## App killed by systemd (exit 137 / oom-kill) — MemoryMax
+
+Each runtime unit ships a hard `MemoryMax` (node 512M, go 256M, python 512M, frankenphp 1G).
+A leaky app gets OOM-killed (and restarted) instead of eating the server. Raise the limit
+per app with a drop-in — it survives template re-apply:
+
+```bash
+sudo systemctl edit mannn-{user}-{hash}.service
+# [Service]
+# MemoryMax=2G
+sudo systemctl daemon-reload && sudo systemctl restart mannn-{user}-{hash}.service
+```

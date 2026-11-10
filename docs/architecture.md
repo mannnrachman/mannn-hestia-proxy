@@ -66,11 +66,11 @@ Receives 5 positional arguments:
 3. Create placeholder code     → server.js / main.go / app.py (if not exists)
 4. Go: auto-compile            → runuser as domain user (go build -o server)
 5. Validate PORT from .env     → allow only runtime-specific safe port range
-6. Register port               → port registry acquire/migrate (release old port + iptables rule)
+6. Register port               → port registry acquire/migrate (release old port + firewall rules)
 7. Generate nginx proxy config → nginx.proxy.conf + nginx.proxy.ssl.conf
 8. Create unique systemd service → /etc/systemd/system/mannn-{user}-{hash}.service
 9. Enable + start service      → systemctl enable + start (or restart)
-10. Restrict port in iptables  → DROP ! -i lo rule tagged mannn-<user>-<domainhash>-<port>
+10. Restrict port in firewall  → DROP ! -i lo rule on iptables AND ip6tables, tagged mannn-<user>-<domainhash>-<port>
 
 If the requested PORT is already registered to a different service unit, the script writes
 a 503 stub config for the domain, does not start the service, and exits with an error
@@ -142,7 +142,44 @@ TimeoutStopSec=20
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=3100
+# Systemd sandbox hardening
+ProtectSystem=strict
+ProtectHome=read-only
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+LockPersonality=yes
+MemoryMax=512M
+UMask=0027
+ReadWritePaths=/home/myuser/web/api.example.com/private/nodejs
+CapabilityBoundingSet=
+AmbientCapabilities=
 
+[Install]
+WantedBy=multi-user.target
+```
+
+`MemoryMax` defaults per runtime: node `512M`, go `256M`, python `512M`, frankenphp `1G`.
+Tune per app with a drop-in — it survives re-apply:
+
+```bash
+# /etc/systemd/system/mannn-<user>-<hash>.service.d/override.conf
+[Service]
+MemoryMax=2G
+```
 [Install]
 WantedBy=multi-user.target
 ```
@@ -161,6 +198,7 @@ All proxy configs pass these headers to the backend app:
 | `X-Forwarded-Port` | `$server_port` | Original port requested by the client |
 | `Upgrade` | `$http_upgrade` | WebSocket support |
 | `Connection` | `$connection_upgrade` | WebSocket support via shared upgrade map |
+| `Early-Data` | `$rfc_early_data` | SSL templates only — lets the backend detect TLS 1.3 0-RTT replays (RFC 8470); omitted unless the request used early data |
 
 The `Connection` header uses `$connection_upgrade`, defined by a shared map deployed to
 `/etc/nginx/conf.d/mannn-upgrade-map.conf`:
@@ -222,7 +260,7 @@ This prevents:
 A shared rate limit zone is deployed to `/etc/nginx/conf.d/mannn-rate-limit.conf`:
 
 ```nginx
-limit_req_zone $binary_remote_addr zone=mannn:10m rate=10r/s;
+limit_req_zone $server_name$binary_remote_addr zone=mannn:10m rate=10r/s;
 ```
 
 All templates reference this zone:
@@ -231,10 +269,11 @@ All templates reference this zone:
 limit_req zone=mannn burst=20 nodelay;
 ```
 
-- **10 MB shared memory** — tracks ~160k unique IPs
-- **10 requests/second** per IP with burst allowance of 20 (rate unchanged)
+- **10 MB shared memory** — tracks ~160k unique domain+IP keys
+- **10 requests/second** per domain per IP with burst allowance of 20 (rate unchanged)
+- **per-domain key** (`$server_name$binary_remote_addr`) — traffic to one domain no longer consumes another domain's budget for the same client IP; important behind shared NAT (offices, universities, mobile carriers)
 - **`nodelay`** — processes burst immediately, rejecting excess
-- **HTTP 429** — rejected requests now return 429 (Too Many Requests) instead of the default 503
+- **HTTP 429** — rejected requests return 429 (Too Many Requests) instead of the default 503
 
 ## Additional Hardening
 
@@ -248,7 +287,7 @@ limit_req zone=mannn burst=20 nodelay;
 
 - `http2 on;` directive instead of the deprecated `listen ... http2` flag (nginx ≥ 1.25.1)
 - OCSP stapling removed — Let's Encrypt ends OCSP support in 2025; matches upstream HestiaCP
-- TLS 1.3 0-RTT anti-replay handling (`$anti_replay`) like upstream HestiaCP templates
+- TLS 1.3 0-RTT anti-replay handling (`$anti_replay`) like upstream HestiaCP templates, plus `Early-Data: 1` forwarded to the backend (RFC 8470) so apps can reject non-idempotent early-data replays
 - `/vstats/` location restored so domain statistics keep working
 
 ## Port Registry
@@ -260,9 +299,14 @@ content is the owning systemd service unit name.
   of the same runtime could silently share a port, routing both to one app)
 - The failed domain gets a temporary 503 stub config, its service is not started, and the
   error instructs the user to change `PORT` in `.env` and re-apply
-- Changing `PORT` migrates the registry entry and removes the old iptables rule
-- Full uninstall releases every registry entry, flushes every `mannn-*` iptables rule, and
-  stops every `mannn-*` systemd service
+- Changing `PORT` migrates the registry entry and removes the old firewall rules (both families)
+- Registry mutations are serialized with `flock` (`mannn-ports/.lock`), so concurrent applies
+  of the same domain can never interleave release/acquire
+- The registry directory is root-only (`700`, files `600`) — it maps unit names to ports and
+  must not leak to unprivileged local users
+- Full uninstall releases every registry entry, flushes every `mannn-*` firewall rule (IPv4
+  and IPv6, including legacy `! -s` rules from older versions), and stops every `mannn-*`
+  systemd service
 
 ## Re-applying Template
 
