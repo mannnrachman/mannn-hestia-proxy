@@ -366,3 +366,23 @@ sudo systemctl restart nginx
 ```
 
 `install.sh` ≥ 1.4.2 does this detection and recovery automatically.
+
+## Custom listeners (e.g. WireGuard IP) must live in nginx.conf_* includes
+
+A `listen 10.x.x.x:80;` line hand-edited directly into
+`/etc/nginx/conf.d/domains/<domain>.conf` is silently wiped by the next
+`v-rebuild-web-domains` / template re-apply (the conf is re-rendered from the
+template). Put extra listeners in the per-domain include files instead — every
+mannn template re-includes them, so they survive every rebuild:
+
+```bash
+echo 'listen 10.0.0.8:80;'  > /home/<user>/conf/web/<domain>/nginx.conf_wg-listen
+echo 'listen 10.0.0.8:443 ssl;' > /home/<user>/conf/web/<domain>/nginx.ssl.conf_wg-listen
+chown root:<user> /home/<user>/conf/web/<domain>/nginx.*wg-listen
+chmod 640 /home/<user>/conf/web/<domain>/nginx.*wg-listen
+nginx -t && systemctl reload nginx
+```
+
+The same applies to access allowlists (`allow 10.0.0.0/24; deny all;` —
+e.g. `nginx.conf_wireguard-only`): keep them in `nginx.conf_*` files, never in
+the rendered domain conf.
