@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] - 2026-11-10
+
+### Fixed
+
+- **Rate limit hung heavy pages** (live incident): the strict 10 r/s zone was applied at server level, so a dashboard load pulling 50+ js/css/svg files in one burst got 429s and the page loader never finished. New two-zone convention (adopted from the live hotfix and extended to every template): dynamic requests keep `mannn` 10 r/s burst 20; static asset locations use new `mannn_static` 100 r/s burst 100 — verified live (60/60 asset requests 200, dynamic burst still throttled 429) and in the container harness through both the laravel (fastcgi) and proxy templates
+- Proxy templates: generated include now has a static-asset location with the same proxy directives under the loose zone; `location /` keeps the strict inherited zone — SPA backends behind node/go/python/frankenphp/docker get the same protection
+- CONTRIBUTING: server-changing conventions (coordinate nginx-wide changes; strict zone never on asset paths; custom listeners/allowlists live in `nginx.conf_*` includes)
+
 ## [1.4.3] - 2026-11-10
 
 ### Fixed
@@ -157,6 +165,7 @@ lifecycle, concurrency; systemd sandbox verified against all four runtimes).
   - `docs/deployment.md` — deployment workflows per runtime
   - `docs/troubleshooting.md` — error codes and fixes
 
+[1.4.4]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.4
 [1.4.2]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.2
 [1.4.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.0
 [1.4.3]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.3

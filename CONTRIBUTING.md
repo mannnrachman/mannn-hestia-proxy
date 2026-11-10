@@ -153,3 +153,18 @@ Open an issue on [GitHub](https://github.com/mannnrachman/mannn-hestia-proxy/iss
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+
+
+## Server-Changing Conventions
+
+- **Coordinate before changing nginx for all domains.** Templates deployed by
+  `install.sh` and Hestia rebuilds apply to every domain using a mannn template
+  — a server-wide directive (rate limits, headers, listeners) can break pages
+  in ways only visible to real users (e.g. dashboards that load 50+ assets).
+  Announce, deploy, and verify a heavy page afterwards.
+- **Rate limiting convention:** strict zone (`mannn`, 10 r/s) ONLY on dynamic
+  requests; static asset locations use the loose zone (`mannn_static`,
+  100 r/s). Never rate-limit asset paths with the strict zone.
+- **Custom nginx per domain** (extra listeners, allowlists) belongs in
+  `nginx.conf_*` / `nginx.ssl.conf_*` include files — never in the rendered
+  domain conf, which is wiped on every rebuild.

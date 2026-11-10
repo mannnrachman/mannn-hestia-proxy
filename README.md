@@ -56,7 +56,7 @@ Security hardening in this version:
 - **`server_tokens off`** hides nginx version from response headers
 - **sensitive file blocking** — `.bak`, `.sql`, `.zip`, `.log`, etc. return 404 at nginx level
 - **config path blocking** — `wp-config.php`, `config.php`, `settings.php`, etc. return 404 at nginx level
-- **rate limiting** — 10 req/s per domain per IP (burst 20) via `mannn-rate-limit.conf`; excess requests get HTTP 429
+- **rate limiting, two zones** — dynamic requests: 10 req/s per domain per IP (burst 20, HTTP 429); static assets (`js/css/svg/fonts/...`): 100 req/s (`mannn_static`) — a 50-file dashboard page load must never hang the loader
 - **`client_max_body_size 10m`** — explicit upload size limit
 - **`/private/` path blocked** in nginx (returns 404)
 - **firewall (IPv4 + IPv6)** — app ports auto-restricted to localhost via `iptables` **and** `ip6tables` (`! -i lo`); pre-1.3.0 legacy rules and duplicates are cleaned up on re-apply
@@ -570,7 +570,7 @@ If an invalid or blocked port is requested, the template falls back to its safe 
 | **HSTS** | Not set by templates — managed solely via the HestiaCP panel (`nginx.hsts.conf` include) to avoid duplicate STS headers |
 | **nginx header hiding** | `proxy_hide_header X-Powered-By` — prevents backend technology fingerprinting |
 | **nginx path protection** | `/private/` returns 404, dotfiles (`.env`, `.git`) blocked, sensitive extensions (`.bak`, `.sql`, `.zip`, `.log`, etc.) blocked, config paths (`wp-config.php`, `config.php`, etc.) blocked |
-| **nginx rate limiting** | 10 req/s per domain per IP (burst 20) via `limit_req_zone $server_name$binary_remote_addr` — one busy domain no longer starves another for the same client (NAT); excess requests get HTTP 429 |
+| **nginx rate limiting** | Two zones, both keyed per domain+IP (`$server_name$binary_remote_addr`): dynamic 10 req/s burst 20 (HTTP 429), static assets 100 req/s burst 100 (`mannn_static`) — one busy domain no longer starves another for the same client (NAT), and heavy pages still load |
 | **nginx version hiding** | `server_tokens off` — prevents nginx version disclosure |
 | **upload size limit** | `client_max_body_size 10m` — explicit body size limit |
 | **systemd sandbox** | `ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges`, `PrivateTmp`, `PrivateDevices`, `ProtectClock/ControlGroups/Hostname/KernelLogs/KernelModules/KernelTunables`, `ProtectProc=invisible`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK`, `RestrictRealtime/SUIDSGID`, `SystemCallFilter=@system-service`, `SystemCallArchitectures=native`, `LockPersonality`, `UMask=0027`, `MemoryMax` (node 512M / go 256M / python 512M / frankenphp 1G), `ReadWritePaths` limited to app directory |

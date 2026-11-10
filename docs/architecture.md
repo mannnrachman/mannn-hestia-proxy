@@ -266,7 +266,10 @@ limit_req_zone $server_name$binary_remote_addr zone=mannn:10m rate=10r/s;
 All templates reference this zone:
 
 ```nginx
+# dynamic requests (server level in every mannn template)
 limit_req zone=mannn burst=20 nodelay;
+# static asset locations override with the loose zone
+limit_req zone=mannn_static burst=100 nodelay;
 ```
 
 - **10 MB shared memory** — tracks ~160k unique domain+IP keys
@@ -274,6 +277,7 @@ limit_req zone=mannn burst=20 nodelay;
 - **per-domain key** (`$server_name$binary_remote_addr`) — traffic to one domain no longer consumes another domain's budget for the same client IP; important behind shared NAT (offices, universities, mobile carriers)
 - **`nodelay`** — processes burst immediately, rejecting excess
 - **HTTP 429** — rejected requests return 429 (Too Many Requests) instead of the default 503
+- **static assets are exempt from the strict zone** (`mannn_static`, 100 r/s): a dashboard page load pulls 50+ js/css/svg files in one burst and must not hang the page loader. CONVENTION: never apply the strict zone to asset locations; keep brute-force protection on dynamic routes only
 
 ## Additional Hardening
 

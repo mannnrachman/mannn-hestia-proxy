@@ -240,7 +240,30 @@ mannn_write_proxy_confs() {
     local ssl_conf="$2"
     local port="$3"
 
+    # Static assets get the loose rate zone (a SPA page load pulls 50+ files
+    # in one burst); everything else falls through to location / which
+    # inherits the strict server-level zone. Same proxy directives in both
+    # locations — the app still serves/gates its own assets; only the rate
+    # budget differs.
     cat > "$http_conf" <<EOF
+location ~* ^.+\\.(js|mjs|css|svg|svgz|png|jpe?g|gif|webp|ico|bmp|woff2?|ttf|eot|otf|map|mp4|webm)\$ {
+    limit_req zone=mannn_static burst=100 nodelay;
+    proxy_pass http://127.0.0.1:${port};
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection \$connection_upgrade;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header X-Forwarded-Port \$server_port;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 3600s;
+    proxy_buffering off;
+}
+
 location / {
     proxy_pass http://127.0.0.1:${port};
     proxy_http_version 1.1;
@@ -260,6 +283,25 @@ location / {
 EOF
 
     cat > "$ssl_conf" <<EOF
+location ~* ^.+\\.(js|mjs|css|svg|svgz|png|jpe?g|gif|webp|ico|bmp|woff2?|ttf|eot|otf|map|mp4|webm)\$ {
+    limit_req zone=mannn_static burst=100 nodelay;
+    proxy_pass http://127.0.0.1:${port};
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection \$connection_upgrade;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header X-Forwarded-Port \$server_port;
+    proxy_set_header Early-Data \$rfc_early_data;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 3600s;
+    proxy_buffering off;
+}
+
 location / {
     proxy_pass http://127.0.0.1:${port};
     proxy_http_version 1.1;
