@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-11-10
+
+### Fixed
+
+- `mannn-laravel` templates shipped none of the mannn hardening (no security headers, rate limiting, `server_tokens off`, sensitive-file blocking) — the PHP-FPM template now applies the same header set (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, CSP-Report-Only, `Permissions-Policy`), `limit_req` 429, `fastcgi_hide_header X-Powered-By`, and blocks backup/config files; archives (`.zip`/`.gz`/`.tar`) stay downloadable since PHP apps publish them legitimately
+
 ## [1.4.0] - 2026-11-10
 
 Audit-driven hardening (empirically verified in containers: nginx behavior, firewall
@@ -140,6 +146,7 @@ lifecycle, concurrency; systemd sandbox verified against all four runtimes).
   - `docs/troubleshooting.md` — error codes and fixes
 
 [1.4.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.0
+[1.4.1]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.4.1
 [1.3.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.3.0
 [1.2.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.2.0
 [1.1.0]: https://github.com/mannnrachman/mannn-hestia-proxy/releases/tag/v1.1.0

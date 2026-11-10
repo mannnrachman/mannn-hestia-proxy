@@ -14,6 +14,29 @@ server {
 	error_log   /var/log/nginx/domains/%domain%.error.log error;
 
 	include %home%/%user%/conf/web/%domain%/nginx.forcessl.conf*;
+	server_tokens off;
+	client_max_body_size 10m;
+	limit_req zone=mannn burst=20 nodelay;
+	limit_req_status 429;
+
+	# Security headers
+	add_header X-Frame-Options "SAMEORIGIN" always;
+	add_header X-Content-Type-Options "nosniff" always;
+	add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+	add_header Content-Security-Policy-Report-Only "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" always;
+	add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+	fastcgi_hide_header X-Powered-By;
+
+	# Block private directory and sensitive files (archives stay allowed:
+	# PHP apps legitimately publish .zip/.gz/.tar downloads)
+	location ^~ /private/ { return 404; }
+	location ~* \.(bak|backup|old|orig|save|swp|tmp|sql|log|env)(\.gz)?$ {
+		return 404;
+	}
+	location ~* ^/(wp-config\.php|config\.php|settings\.php|database\.yml|appsettings\.json)$ {
+		return 404;
+	}
+
 
 	location = /favicon.ico {
 		log_not_found off;
