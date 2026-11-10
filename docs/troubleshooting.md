@@ -346,3 +346,23 @@ sudo systemctl edit mannn-{user}-{hash}.service
 # MemoryMax=2G
 sudo systemctl daemon-reload && sudo systemctl restart mannn-{user}-{hash}.service
 ```
+
+## After an upgrade, new headers/limits don't take effect
+
+`systemctl reload nginx` reports success even when nginx itself rejects the new
+configuration (it keeps serving the old one). Typical trigger: the `limit_req`
+zone key changed (v1.4.0 changed it to `$server_name$binary_remote_addr`) —
+nginx cannot re-use the live shared-memory zone and logs:
+
+```
+[emerg] limit_req "mannn" uses the "$server_name$binary_remote_addr" key while previously it used the "$binary_remote_addr" key
+```
+
+Check for it and recover with a full restart (drops open connections ~1s):
+
+```bash
+tail /var/log/nginx/error.log | grep emerg
+sudo systemctl restart nginx
+```
+
+`install.sh` ≥ 1.4.2 does this detection and recovery automatically.
