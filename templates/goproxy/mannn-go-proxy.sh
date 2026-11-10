@@ -53,7 +53,10 @@ import (
 )
 
 func main() {
-    port := loadPort("4100")
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = loadPort("4100")
+    }
 
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
@@ -142,10 +145,29 @@ TimeoutStopSec=20
 Environment=PORT=$PORT
 
     # Systemd sandbox hardening
+    # Per-service overrides survive re-apply via a drop-in:
+    #   /etc/systemd/system/<unit>.service.d/override.conf
     ProtectSystem=strict
     ProtectHome=read-only
     NoNewPrivileges=true
     PrivateTmp=true
+    PrivateDevices=true
+    ProtectClock=yes
+    ProtectControlGroups=yes
+    ProtectHostname=yes
+    ProtectKernelLogs=yes
+    ProtectKernelModules=yes
+    ProtectKernelTunables=yes
+    ProtectProc=invisible
+    RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+    RestrictRealtime=yes
+    RestrictSUIDSGID=yes
+    SystemCallArchitectures=native
+    SystemCallFilter=@system-service
+    SystemCallErrorNumber=EPERM
+    LockPersonality=yes
+    MemoryMax=256M
+    UMask=0027
     ReadWritePaths=$APP_DIR
     CapabilityBoundingSet=
     AmbientCapabilities=

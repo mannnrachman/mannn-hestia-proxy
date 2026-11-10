@@ -45,12 +45,21 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-let port = 3100;
-try {
-    const env = fs.readFileSync(path.join(__dirname, '.env'), 'utf8');
-    const match = env.match(/^PORT=(.+)$/m);
-    if (match) port = parseInt(match[1].trim().replace(/['"]/g, ''));
-} catch {}
+function loadPort() {
+    const envPort = parseInt(process.env.PORT, 10);
+    if (Number.isInteger(envPort) && envPort > 0) return envPort;
+    try {
+        const env = fs.readFileSync(path.join(__dirname, '.env'), 'utf8');
+        const match = env.match(/^PORT=(.+)$/m);
+        if (match) {
+            const p = parseInt(match[1].trim().replace(/['"]/g, ''));
+            if (Number.isInteger(p) && p > 0) return p;
+        }
+    } catch {}
+    return 3100;
+}
+
+const port = loadPort();
 
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -120,10 +129,29 @@ TimeoutStopSec=20
 Environment=NODE_ENV=production
 Environment=PORT=$PORT
     # Systemd sandbox hardening
+    # Per-service overrides survive re-apply via a drop-in:
+    #   /etc/systemd/system/<unit>.service.d/override.conf
     ProtectSystem=strict
     ProtectHome=read-only
     NoNewPrivileges=true
     PrivateTmp=true
+    PrivateDevices=true
+    ProtectClock=yes
+    ProtectControlGroups=yes
+    ProtectHostname=yes
+    ProtectKernelLogs=yes
+    ProtectKernelModules=yes
+    ProtectKernelTunables=yes
+    ProtectProc=invisible
+    RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+    RestrictRealtime=yes
+    RestrictSUIDSGID=yes
+    SystemCallArchitectures=native
+    SystemCallFilter=@system-service
+    SystemCallErrorNumber=EPERM
+    LockPersonality=yes
+    MemoryMax=512M
+    UMask=0027
     ReadWritePaths=$APP_DIR
     CapabilityBoundingSet=
     AmbientCapabilities=

@@ -42,13 +42,19 @@ chmod 600 "$ENV_FILE" 2>/dev/null || true
 if [ ! -f "$APP_DIR/index.php" ] && [ ! -f "$APP_DIR/public/index.php" ]; then
     cat > "$APP_DIR/index.php" << 'PHPEOF'
 <?php
-$port = 7100;
-$envFile = __DIR__ . '/.env';
-if (file_exists($envFile)) {
-    $env = file_get_contents($envFile);
-    if (preg_match('/^PORT=(.+)$/m', $env, $m)) {
-        $port = trim($m[1], ""' 	");
+$port = getenv('PORT');
+if (!$port || !ctype_digit($port)) {
+    $port = null;
+    $envFile = __DIR__ . '/.env';
+    if (file_exists($envFile)) {
+        $env = file_get_contents($envFile);
+        if (preg_match('/^PORT=(\d+)/m', $env, $m)) {
+            $port = $m[1];
+        }
     }
+}
+if (!$port) {
+    $port = 7100;
 }
 
 header('Content-Type: application/json');
@@ -56,7 +62,6 @@ echo json_encode([
     'status' => 'ok',
     'message' => 'PHP app running behind HestiaCP',
     'domain' => $_SERVER['HTTP_HOST'] ?? 'unknown',
-    'runtime' => 'FrankenPHP ' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION . '.' . PHP_RELEASE_VERSION,
 ]);
 PHPEOF
     chown "$user:$user" "$APP_DIR/index.php"
@@ -113,10 +118,29 @@ TimeoutStopSec=20
 Environment=PORT=$PORT
 
     # Systemd sandbox hardening
+    # Per-service overrides survive re-apply via a drop-in:
+    #   /etc/systemd/system/<unit>.service.d/override.conf
     ProtectSystem=strict
     ProtectHome=read-only
     NoNewPrivileges=true
     PrivateTmp=true
+    PrivateDevices=true
+    ProtectClock=yes
+    ProtectControlGroups=yes
+    ProtectHostname=yes
+    ProtectKernelLogs=yes
+    ProtectKernelModules=yes
+    ProtectKernelTunables=yes
+    ProtectProc=invisible
+    RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+    RestrictRealtime=yes
+    RestrictSUIDSGID=yes
+    SystemCallArchitectures=native
+    SystemCallFilter=@system-service
+    SystemCallErrorNumber=EPERM
+    LockPersonality=yes
+    MemoryMax=1G
+    UMask=0027
     ReadWritePaths=$APP_DIR
     CapabilityBoundingSet=
     AmbientCapabilities=

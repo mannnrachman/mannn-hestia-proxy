@@ -42,10 +42,13 @@ chmod 600 "$ENV_FILE" 2>/dev/null || true
 if [ ! -f "$APP_DIR/app.py" ] && [ ! -f "$APP_DIR/main.py" ] && [ ! -f "$APP_DIR/wsgi.py" ] && [ ! -f "$APP_DIR/server.py" ]; then
     cat > "$APP_DIR/app.py" << 'PYEOF'
 import json
+import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-
 def load_port(default=8100):
+    env_port = os.environ.get('PORT', '').strip()
+    if env_port.isdigit():
+        return int(env_port)
     try:
         with open('.env') as f:
             for line in f:
@@ -134,10 +137,29 @@ Environment=PORT=$PORT
 Environment=PYTHONUNBUFFERED=1
 
     # Systemd sandbox hardening
+    # Per-service overrides survive re-apply via a drop-in:
+    #   /etc/systemd/system/<unit>.service.d/override.conf
     ProtectSystem=strict
     ProtectHome=read-only
     NoNewPrivileges=true
     PrivateTmp=true
+    PrivateDevices=true
+    ProtectClock=yes
+    ProtectControlGroups=yes
+    ProtectHostname=yes
+    ProtectKernelLogs=yes
+    ProtectKernelModules=yes
+    ProtectKernelTunables=yes
+    ProtectProc=invisible
+    RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+    RestrictRealtime=yes
+    RestrictSUIDSGID=yes
+    SystemCallArchitectures=native
+    SystemCallFilter=@system-service
+    SystemCallErrorNumber=EPERM
+    LockPersonality=yes
+    MemoryMax=512M
+    UMask=0027
     ReadWritePaths=$APP_DIR
     CapabilityBoundingSet=
     AmbientCapabilities=
